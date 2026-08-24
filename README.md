@@ -9,10 +9,10 @@ Totul pe **free tier Cloudflare**.
 
 ## Stack
 
-| Piesă         | Serviciu                     | Rol                                     |
-| ------------- | ---------------------------- | --------------------------------------- |
-| Frontend      | Cloudflare Pages (static)    | UI de swipe (vanilla HTML/CSS/JS în V1) |
-| API           | Cloudflare Workers (Hono/TS) | rutare, logică, auth simplu             |
+| Piesă         | Serviciu                       | Rol                                     |
+| ------------- | ------------------------------ | --------------------------------------- |
+| Frontend      | Workers Static Assets (public/)| UI de swipe (vanilla HTML/CSS/JS în V1) |
+| API           | Cloudflare Workers (Hono/TS)   | rutare, logică, auth simplu             |
 | DB relațională| D1 (SQLite)                  | users, profiles, rooms, swipes, matches |
 | Stare live    | Durable Objects + WebSocket  | sesiune de swipe, match instant         |
 | Cache         | Workers KV                   | răspunsuri TMDb (evită rate-limit)      |
@@ -85,20 +85,18 @@ npx wrangler secret put TMDB_API_KEY
 
 ### 5. Rulare dev
 
-```bash
-# Worker (API)
-npx wrangler dev
+Un singur server servește și frontend-ul static și API-ul (same-origin):
 
-# Frontend (Pages), în alt terminal
-npx wrangler pages dev public
+```bash
+npx wrangler dev
 ```
+→ deschide **http://localhost:8787** (UI-ul) — `/api/*` e servit de același Worker.
 
 ## Scripturi npm
 
 | Script               | Ce face                                    |
 | -------------------- | ------------------------------------------ |
-| `npm run dev`        | rulează Worker-ul local (`wrangler dev`)   |
-| `npm run pages:dev`  | rulează frontend-ul static local           |
+| `npm run dev`        | rulează local Worker-ul + frontend-ul (`wrangler dev`) |
 | `npm run typecheck`  | `tsc --noEmit`                             |
 | `npm run lint`       | ESLint                                      |
 | `npm run build`      | bundling dry-run (validare build)          |
@@ -107,7 +105,7 @@ npx wrangler pages dev public
 ## CI/CD
 
 - **PR → main**: lint + typecheck + build (`.github/workflows/ci.yml`).
-- **push → main**: deploy Workers + Pages (`.github/workflows/deploy.yml`).
+- **push → main**: un singur `wrangler deploy` (Worker + frontend static) (`.github/workflows/deploy.yml`).
   Necesită secretele de repo `CLOUDFLARE_API_TOKEN` și `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Status

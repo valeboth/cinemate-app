@@ -9,6 +9,13 @@ compatibility_date = "2025-01-01"
 # nodejs_compat: activat pentru eventuale API-uri Node folosite de Hono/parsers.
 compatibility_flags = ["nodejs_compat"]
 
+# --- Frontend static (Workers Static Assets) ---
+# Worker-ul servește ȘI fișierele din public/ ȘI rutele /api pe același origin.
+# Assets-urile au prioritate: GET / -> index.html, /app.js -> fișier;
+# rutele care nu au fișier (ex. /api/*) ajung la Worker. Fără CORS, un singur deploy.
+[assets]
+directory = "./public"
+
 # --- D1 (baza de date relațională) ---
 [[d1_databases]]
 binding = "DB"
