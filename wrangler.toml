@@ -10,17 +10,19 @@ compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 # --- D1 (baza de date relațională) ---
-# Rulează: npx wrangler d1 create cinemate-db  →  copiază database_id aici.
 [[d1_databases]]
 binding = "DB"
 database_name = "cinemate-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "579c4bc5-31e2-4523-8f67-ceb6e2ea56c4"
 
 # --- Workers KV (cache răspunsuri TMDb) ---
-# Rulează: npx wrangler kv:namespace create TMDB_CACHE  →  copiază id aici.
+# preview_id = același namespace ca prod: simplu, iar cache-ul TMDb e non-critic.
+# Pentru separare dev/prod „ca la carte": npx wrangler kv:namespace create TMDB_CACHE --preview
+# și pune id-ul de preview în preview_id.
 [[kv_namespaces]]
 binding = "TMDB_CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "c611f7ebdc324486ac99c396369c70a6"
+preview_id = "c611f7ebdc324486ac99c396369c70a6"
 
 # --- Durable Objects (stare live per cameră + WebSocket) ---
 [[durable_objects.bindings]]
