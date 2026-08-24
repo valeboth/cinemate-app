@@ -1,15 +1,26 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import type { Env } from "./types";
+import { users } from "./routes/users";
+import { profile } from "./routes/profile";
+import { rooms } from "./routes/rooms";
 
 // Durable Object — stare live per cameră (implementat în Faza 4).
 export { Room } from "./durable-objects/room";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", phase: 0 }));
+// CORS pentru toate rutele /api/* — frontend-ul (Pages) rulează pe alt origin în dev.
+// V1: permisiv. TODO: restrânge originile în prod dacă e nevoie.
+app.use("/api/*", cors());
 
-// --- Rute implementate în fazele următoare ---
-// Faza 2: POST /api/users, POST /api/profile/quiz, POST /api/rooms, POST /api/rooms/join
+app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", phase: 2 }));
+
+// Rute Faza 2
+app.route("/api/users", users);
+app.route("/api/profile", profile);
+app.route("/api/rooms", rooms);
+
 // Faza 3: GET  /api/rooms/:id/deck
 // Faza 4: POST /api/rooms/:id/swipe, GET /api/rooms/:id/matches, GET /api/rooms/:id/ws
 // TODO(V2/V3): import CSV Letterboxd, Plex-check, auto-queue Radarr/Sonarr, mod grup.
