@@ -13,7 +13,7 @@ personal).
 
 ## Stack (100% free tier Cloudflare)
 
-- **Frontend:** Cloudflare Pages, vanilla HTML/CSS/JS (fără framework în V1)
+- **Frontend:** Workers Static Assets (folder `public/`), vanilla HTML/CSS/JS (fără framework în V1). *(Decizie: same-origin cu API-ul → fără CORS, un singur `wrangler deploy`; tot pe free tier. Înlocuiește Pages din brief.)*
 - **API:** Cloudflare Workers cu Hono, TypeScript
 - **DB relațională:** D1 (SQLite)
 - **Stare live per cameră:** Durable Objects + WebSocket
@@ -75,9 +75,9 @@ personal).
 - [x] **Faza 1 — D1.** `schema.sql` + migrare. *(PR #2, mergeuit)*
 - [x] **Faza 2 — Worker + rute Hono.** users, profil simplu, rooms create/join. *(PR #3, mergeuit)*
 - [x] **Faza 3 — TMDb service.** cache KV + generarea pool-ului de deck per cameră. *(PR #4, mergeuit)*
-- [ ] **Faza 4 — Durable Object.** stare live, WebSocket hibernation, detecție match. *(în lucru / PR curent)*
-- [ ] **Faza 5 — Frontend.** swipe pe Pages + match screen + solo mode + toggle
-      film/serial.
+- [x] **Faza 4 — Durable Object.** stare live, WebSocket hibernation, detecție match. *(PR #5, mergeuit)*
+- [ ] **Faza 5 — Frontend.** swipe + match screen live + solo mode + toggle
+      film/serial (Workers Static Assets). *(în lucru / PR curent)*
 
 ## Roadmap (NU în scope acum)
 

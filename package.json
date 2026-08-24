@@ -12,9 +12,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "db:migrate:local": "wrangler d1 execute cinemate-db --local --file=schema.sql",
-    "db:migrate:remote": "wrangler d1 execute cinemate-db --remote --file=schema.sql",
-    "pages:dev": "wrangler pages dev public",
-    "pages:deploy": "wrangler pages deploy public --project-name cinemate"
+    "db:migrate:remote": "wrangler d1 execute cinemate-db --remote --file=schema.sql"
   },
   "dependencies": {
     "hono": "^4.6.14"
