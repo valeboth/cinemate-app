@@ -1,0 +1,38 @@
+# Cinemate — configurare Cloudflare Workers
+# IaC versionat în repo. ID-urile reale (D1, KV) le completezi TU după ce
+# rulezi comenzile de creare (vezi README, secțiunea "Setup Cloudflare").
+# NU pune aici secrete (cheia TMDb) — ea merge prin `wrangler secret put`.
+
+name = "cinemate"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+# nodejs_compat: activat pentru eventuale API-uri Node folosite de Hono/parsers.
+compatibility_flags = ["nodejs_compat"]
+
+# --- D1 (baza de date relațională) ---
+# Rulează: npx wrangler d1 create cinemate-db  →  copiază database_id aici.
+[[d1_databases]]
+binding = "DB"
+database_name = "cinemate-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# --- Workers KV (cache răspunsuri TMDb) ---
+# Rulează: npx wrangler kv:namespace create TMDB_CACHE  →  copiază id aici.
+[[kv_namespaces]]
+binding = "TMDB_CACHE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# --- Durable Objects (stare live per cameră + WebSocket) ---
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+# HARD REQUIREMENT: DO pe SQLite storage backend (free tier).
+# => migrations cu `new_sqlite_classes`, NU `new_classes`.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+# Notă: cheia TMDb (TMDB_API_KEY) NU e aici.
+#   - local: în .dev.vars (gitignored)
+#   - prod:  npx wrangler secret put TMDB_API_KEY
