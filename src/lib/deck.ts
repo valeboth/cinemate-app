@@ -103,3 +103,15 @@ export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult>
 
   return { room_id: room.id, media_type: room.media_type, generated: true, cards };
 }
+
+/** Caută un card în cache-ul de deck al camerei (pentru ecranul de match). */
+export async function getCardFromDeck(
+  env: Env,
+  roomId: string,
+  tmdbId: number,
+): Promise<DeckCard | null> {
+  const cached = await env.TMDB_CACHE.get(DECK_CARDS_KV_PREFIX + roomId);
+  if (!cached) return null;
+  const cards = JSON.parse(cached) as DeckCard[];
+  return cards.find((c) => c.tmdb_id === tmdbId) ?? null;
+}
