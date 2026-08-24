@@ -188,12 +188,16 @@ async function handleJoinRoom() {
 async function enterSwipe() {
   showScreen("screen-swipe");
   $("room-code-label").textContent = state.soloMode ? "SOLO" : state.room.join_code;
+  syncMediaToggle();
+  connectWs();
+  await loadDeck();
+}
+
+async function loadDeck() {
   $("card").classList.add("hidden");
   $("deck-empty").classList.add("hidden");
+  $("deck-loading").textContent = "Se încarcă deck-ul…";
   $("deck-loading").classList.remove("hidden");
-
-  connectWs();
-
   try {
     const res = await api(`/api/rooms/${state.room.id}/deck`);
     state.deck = res.cards || [];
@@ -202,6 +206,29 @@ async function enterSwipe() {
     renderCard();
   } catch (e) {
     $("deck-loading").textContent = "Eroare la deck: " + e.message;
+  }
+}
+
+function syncMediaToggle() {
+  document.querySelectorAll("#swipe-media-toggle .toggle-opt").forEach((b) => {
+    b.classList.toggle("active", b.dataset.media === state.mediaType);
+  });
+}
+
+// Toggle film/serial live: schimbă media_type pe cameră → pool-ul se regenerează.
+async function toggleMedia(media) {
+  if (media === state.mediaType) return;
+  try {
+    const room = await api(`/api/rooms/${state.room.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ user_id: state.userId, media_type: media }),
+    });
+    state.room = room;
+    state.mediaType = media;
+    syncMediaToggle();
+    await loadDeck();
+  } catch (e) {
+    console.error("toggle media error", e);
   }
 }
 
@@ -243,7 +270,7 @@ async function swipe(direction) {
       if (state.soloMode) {
         toast("💾 Salvat în watchlist");
       } else {
-        showMatch(card);
+        showMatch(card, res.match_reason);
       }
     }
   } catch (e) {
@@ -273,7 +300,15 @@ function connectWs() {
           title: "Match!",
           poster_path: null,
         };
-      showMatch(card);
+      showMatch(card, msg.reason);
+    } else if (msg.type === "deck_reset") {
+      // celălalt user a schimbat film/serial → sincronizăm și reîncărcăm deck-ul
+      if (msg.media_type) {
+        state.mediaType = msg.media_type;
+        if (state.room) state.room.media_type = msg.media_type;
+        syncMediaToggle();
+      }
+      loadDeck();
     }
   });
 }
@@ -290,7 +325,9 @@ function closeWs() {
 }
 
 // ── Match screen ────────────────────────────────────────────────────────────
-function showMatch(card) {
+const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
+
+function showMatch(card, reason) {
   $("match-poster").style.backgroundImage = card.poster_path
     ? `url(${TMDB_IMG}${card.poster_path})`
     : "none";
@@ -299,9 +336,46 @@ function showMatch(card) {
   if (card.release_year) bits.push(card.release_year);
   if (card.vote_average) bits.push("⭐ " + card.vote_average.toFixed(1));
   $("match-meta").textContent = bits.join("  ·  ");
+  $("match-reason").textContent = reason || "";
   const media = card.media_type || state.mediaType;
   $("match-tmdb-link").href = `https://www.themoviedb.org/${media}/${card.tmdb_id}`;
+  renderProviders(card.tmdb_id);
   showScreen("screen-match");
+}
+
+// „Unde poate fi văzut" — watch providers RO (streaming prioritizat).
+async function renderProviders(tmdbId) {
+  const box = $("match-providers");
+  box.innerHTML = "";
+  try {
+    const res = await api(`/api/rooms/${state.room.id}/providers/${tmdbId}`);
+    const p = res.providers || {};
+    const list = (p.flatrate && p.flatrate.length ? p.flatrate : p.rent || []).slice(0, 5);
+    if (!list.length) {
+      box.innerHTML = "<span class='muted'>Fără date de streaming în RO</span>";
+      return;
+    }
+    const label = document.createElement("span");
+    label.className = "muted providers-label";
+    label.textContent = p.flatrate && p.flatrate.length ? "Streaming:" : "Închiriere:";
+    box.appendChild(label);
+    list.forEach((prov) => {
+      const el = document.createElement("span");
+      el.className = "provider";
+      el.title = prov.name;
+      if (prov.logo_path) {
+        const img = document.createElement("img");
+        img.src = `${TMDB_LOGO}${prov.logo_path}`;
+        img.alt = prov.name;
+        el.appendChild(img);
+      } else {
+        el.textContent = prov.name;
+      }
+      box.appendChild(el);
+    });
+  } catch {
+    box.innerHTML = "";
+  }
 }
 
 // ── Matches list ────────────────────────────────────────────────────────────
@@ -354,6 +428,9 @@ function init() {
   $("join-room-btn").onclick = handleJoinRoom;
   $("like-btn").onclick = () => swipe("like");
   $("dislike-btn").onclick = () => swipe("dislike");
+  document.querySelectorAll("#swipe-media-toggle .toggle-opt").forEach((b) => {
+    b.onclick = () => toggleMedia(b.dataset.media);
+  });
   $("view-matches-btn").onclick = showMatchesList;
   $("matches-back-btn").onclick = () => showScreen("screen-swipe");
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");

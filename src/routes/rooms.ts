@@ -3,7 +3,8 @@ import type { Env } from "../types";
 import { genId } from "../lib/ids";
 import { uniqueJoinCode, userExists } from "../lib/db";
 import { mapRoom } from "../lib/mappers";
-import { getOrCreateDeck, getCardFromDeck } from "../lib/deck";
+import { getOrCreateDeck, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
+import { getWatchProviders } from "../services/tmdb";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
@@ -146,6 +147,7 @@ rooms.post("/:id/swipe", async (c) => {
 
   let matched = false;
   let isNewMatch = false;
+  let matchReason: string | null = null;
 
   if (direction === "like") {
     const isSolo = room.user_b_id === null;
@@ -175,11 +177,13 @@ rooms.post("/:id/swipe", async (c) => {
       // Broadcast live către clienții WS DOAR la match nou.
       if (isNewMatch) {
         const card = await getCardFromDeck(c.env, room.id, tmdbId);
+        matchReason = await buildMatchReason(c.env, room, card);
         const event = JSON.stringify({
           type: "match",
           tmdb_id: tmdbId,
           media_type: room.media_type,
           card,
+          reason: matchReason,
         });
         const stub = c.env.ROOM.get(c.env.ROOM.idFromName(room.id));
         try {
@@ -193,7 +197,10 @@ rooms.post("/:id/swipe", async (c) => {
     }
   }
 
-  return c.json({ ok: true, matched, is_new_match: isNewMatch, tmdb_id: tmdbId, direction }, 200);
+  return c.json(
+    { ok: true, matched, is_new_match: isNewMatch, tmdb_id: tmdbId, direction, match_reason: matchReason },
+    200,
+  );
 });
 
 // GET /api/rooms/:id/matches — lista de match-uri (cu card din cache, dacă există).
@@ -230,4 +237,71 @@ rooms.get("/:id/ws", async (c) => {
   return stub.fetch(c.req.raw);
 });
 
-// TODO(V2): la toggle film/serial, resetează rooms.deck (=[]) ca pool-ul să se regenereze.
+// PATCH /api/rooms/:id — toggle film/serial live: schimbă media_type + resetează pool-ul.
+// Body: { user_id, media_type }
+rooms.patch("/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  const userId = typeof body?.user_id === "string" ? body.user_id : "";
+  const mediaType = body?.media_type;
+  if (!userId) return c.json({ error: "user_id_required" }, 400);
+  if (mediaType !== "movie" && mediaType !== "tv") {
+    return c.json({ error: "media_type_invalid" }, 400);
+  }
+
+  const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const room = mapRoom(row);
+
+  // AUTH GATING: doar membrii camerei pot schimba tipul.
+  if (userId !== room.user_a_id && userId !== room.user_b_id) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  if (room.media_type === mediaType) {
+    return c.json(room, 200); // no-op
+  }
+
+  await c.env.DB.prepare("UPDATE rooms SET media_type = ? WHERE id = ?")
+    .bind(mediaType, room.id)
+    .run();
+  await resetDeck(c.env, room.id); // pool-ul se regenerează la următorul /deck
+
+  // Anunță live celălalt client să reîncarce deck-ul.
+  const stub = c.env.ROOM.get(c.env.ROOM.idFromName(room.id));
+  try {
+    await stub.fetch(
+      new Request("https://do/broadcast", {
+        method: "POST",
+        body: JSON.stringify({ type: "deck_reset", media_type: mediaType }),
+      }),
+    );
+  } catch {
+    // best-effort
+  }
+
+  return c.json({ ...room, media_type: mediaType, deck: [] }, 200);
+});
+
+// GET /api/rooms/:id/providers/:tmdbId — unde poate fi văzut titlul (RO).
+rooms.get("/:id/providers/:tmdbId", async (c) => {
+  const id = c.req.param("id");
+  const tmdbId = Number(c.req.param("tmdbId"));
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: "tmdb_id_invalid" }, 400);
+
+  const row = await c.env.DB.prepare("SELECT media_type FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const mediaType = String(row.media_type) === "tv" ? "tv" : "movie";
+
+  try {
+    const providers = await getWatchProviders(c.env, mediaType, tmdbId);
+    return c.json({ tmdb_id: tmdbId, media_type: mediaType, providers }, 200);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return c.json({ error: "providers_fetch_failed", detail }, 502);
+  }
+});
