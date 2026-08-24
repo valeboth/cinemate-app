@@ -73,8 +73,8 @@ personal).
       wrangler config, tsconfig, ESLint, GitHub Actions, `.gitignore`, README,
       PLAN.md. *(PR #1, mergeuit)*
 - [x] **Faza 1 — D1.** `schema.sql` + migrare. *(PR #2, mergeuit)*
-- [ ] **Faza 2 — Worker + rute Hono.** users, profil simplu, rooms create/join. *(în lucru / PR curent)*
-- [ ] **Faza 3 — TMDb service.** cache KV + generarea pool-ului de deck per cameră.
+- [x] **Faza 2 — Worker + rute Hono.** users, profil simplu, rooms create/join. *(PR #3, mergeuit)*
+- [ ] **Faza 3 — TMDb service.** cache KV + generarea pool-ului de deck per cameră. *(în lucru / PR curent)*
 - [ ] **Faza 4 — Durable Object.** stare live, WebSocket hibernation, detecție match.
 - [ ] **Faza 5 — Frontend.** swipe pe Pages + match screen + solo mode + toggle
       film/serial.
