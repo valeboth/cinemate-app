@@ -6,9 +6,8 @@
 name = "cinemate"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
-# Păstrează activ și URL-ul *.workers.dev ca fallback (altfel adăugarea unei rute
-# custom îl dezactivează implicit).
-workers_dev = true
+# Dezactivat: folosim DOAR custom domain-ul cinemate.valegboth.win.
+workers_dev = false
 # nodejs_compat: activat pentru eventuale API-uri Node folosite de Hono/parsers.
 compatibility_flags = ["nodejs_compat"]
 
