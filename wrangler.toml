@@ -16,6 +16,13 @@ compatibility_flags = ["nodejs_compat"]
 [assets]
 directory = "./public"
 
+# --- Custom domain ---
+# Necesită ca zona valegboth.win să fie în același cont Cloudflare.
+# La deploy, wrangler creează automat înregistrarea DNS + certificatul TLS.
+[[routes]]
+pattern = "cinemate.valegboth.win"
+custom_domain = true
+
 # --- D1 (baza de date relațională) ---
 [[d1_databases]]
 binding = "DB"
