@@ -1,109 +1,49 @@
 # Cinemate — Plan
 
-> Generat din brief-ul proiectului. **Scope curent: DOAR V1.** Feature-urile V2/V3
-> apar aici doar ca roadmap; unde se leagă, în cod există comentarii `TODO`.
+Tinder for movies & TV shows. Two users join a room via a 6-char invite code, get a
+shared deck, swipe, and when both like the same title → **match** (dedicated screen,
+live over WebSocket). Works solo too (any like = personal watchlist).
 
-## Ce construim
+## Stack (Cloudflare free tier)
+- **Frontend:** Workers Static Assets (`public/`), vanilla HTML/CSS/JS — same origin as the API.
+- **API:** Cloudflare Workers + Hono (TypeScript)
+- **DB:** D1 (SQLite)
+- **Live state:** Durable Objects + WebSocket (Hibernation API)
+- **Cache:** Workers KV (TMDb responses)
+- **Movie data:** TMDb API (language en-US, region/providers RO)
 
-Cinemate = „Tinder pentru filme/seriale". Doi useri intră într-o cameră printr-un
-cod de invite (6 caractere), primesc un deck de titluri, fac swipe, iar când
-amândoi dau like pe același titlu → **match** = filmul câștigător (ecran dedicat,
-live prin WebSocket, fără refresh). Merge și **solo** (orice like = watchlist
-personal).
+## D1 schema
+- **users** — id, username, created_at
+- **profiles** — user_id, genre_scores (JSON), era_pref, mood_pref, media_type_pref
+- **rooms** — id, join_code, user_a_id, user_b_id (null = solo), platform_filter, media_type, deck (JSON), status, created_at
+- **swipes** — (room_id, user_id, tmdb_id) PK, media_type, direction, created_at
+- **matches** — (room_id, tmdb_id) PK, media_type, matched_at
 
-## Stack (100% free tier Cloudflare)
+## API routes
+- `POST /api/users` — create user
+- `GET /api/users/:id/watchlist` — persistent solo watchlist
+- `POST /api/profile/quiz` · `GET /api/profile/:id` — taste profile
+- `POST /api/rooms` · `POST /api/rooms/join` · `GET /api/rooms/:id`
+- `PATCH /api/rooms/:id` — live movie/TV toggle (resets the pool)
+- `GET /api/rooms/:id/deck` — shared pool (generated once)
+- `POST /api/rooms/:id/swipe` — record swipe + detect match + broadcast
+- `GET /api/rooms/:id/matches` · `GET /api/rooms/:id/providers/:tmdbId`
+- `GET /api/rooms/:id/ws` — live WebSocket
 
-- **Frontend:** Workers Static Assets (folder `public/`), vanilla HTML/CSS/JS (fără framework în V1). *(Decizie: same-origin cu API-ul → fără CORS, un singur `wrangler deploy`; tot pe free tier. Înlocuiește Pages din brief.)*
-- **API:** Cloudflare Workers cu Hono, TypeScript
-- **DB relațională:** D1 (SQLite)
-- **Stare live per cameră:** Durable Objects + WebSocket
-- **Cache:** Workers KV (răspunsuri TMDb, ca să evităm rate-limit)
-- **Date filme:** TMDb API
+## Hard requirements (locked decisions)
+1. Durable Objects on the **SQLite** backend (`new_sqlite_classes` migration).
+2. The candidate pool is generated **once** per room and saved (`rooms.deck`); both users draw from the same pool.
+3. Durable Object uses the **WebSocket Hibernation API**.
+4. `/swipe` and `/rooms PATCH` enforce **auth gating** (user must belong to the room).
+5. The TMDb key is **never** in code or the frontend (`.dev.vars` locally, `wrangler secret` in prod).
+6. **TMDb attribution** in the footer.
 
-## Schema D1 (orientativ)
+## Status
+- [x] **V1** — schema, Worker routes, TMDb + shared pool, Durable Object + live WS, swipe UI, solo, movie/TV toggle. Deployed.
+- [x] **V2.1** — live movie/TV toggle, full watch-provider filtering + "where to watch", match transparency.
+- [x] **V2.2** — real quiz scoring (like/love genre weights + era), persistent solo watchlist.
 
-- **users** — `id`, `username`, `created_at`
-- **profiles** — `user_id`, `genre_scores` (JSON), `era_pref`, `mood_pref`, `media_type_pref`
-- **rooms** — `id`, `join_code`, `user_a_id`, `user_b_id` (null = solo), `platform_filter`, `media_type`, `deck` (JSON), `status`
-- **swipes** — `room_id`, `user_id`, `tmdb_id`, `media_type`, `direction`
-- **matches** — `room_id`, `tmdb_id`, `media_type`, `matched_at`
-
-## Rute API (Worker)
-
-- `POST /api/users` — creează user
-- `POST /api/profile/quiz` — salvează profil simplu de gusturi
-- `POST /api/rooms` — creează cameră + cod de invite
-- `POST /api/rooms/join` — intri într-o cameră cu cod
-- `GET /api/rooms/:id/deck` — deck de titluri (pool comun), filtrat pe profil + platformă
-- `POST /api/rooms/:id/swipe` — înregistrează swipe, calculează match live prin DO
-- `GET /api/rooms/:id/matches` — lista de match-uri + unde poate fi văzut
-- `GET /api/rooms/:id/ws` — conexiune WebSocket pentru notificări live de match
-
-## Cerințe HARD (decizii luate / bug-uri deja identificate)
-
-1. **Durable Objects DOAR cu SQLite storage backend** (free tier). În wrangler
-   config, migrations cu `new_sqlite_classes`, **NU** `new_classes`.
-2. **Pool-ul de candidați (deck-ul) se generează O SINGURĂ DATĂ per cameră** și se
-   salvează (listă de `tmdb_id` pe `rooms` sau în DO). Ambii useri trag din
-   **ACELAȘI pool** — asta garantează suprapunerea necesară pentru match. Ordinea
-   poate diferi/shuffle per user; contează pool-ul comun, nu ordinea.
-3. **Durable Object folosește WebSocket Hibernation API** (fără compute cât camera
-   e idle).
-4. **Auth gating:** la fiecare `/swipe` se verifică server-side că `user_id`
-   aparține camerei.
-5. **Secrets:** cheia TMDb **niciodată** în cod și niciodată expusă în frontend.
-   Frontend → Worker → TMDb. Local în `.dev.vars` (gitignored), în prod prin
-   `wrangler secret put`.
-6. **Atribuire TMDb în footer:** „This product uses the TMDB API but is not
-   endorsed or certified by TMDB" + link către themoviedb.org.
-
-## Standarde de repo
-
-- **GitHub Actions:** pe PR → lint + typecheck + build; pe merge în main → deploy
-  Workers + Pages.
-- **Conventional commits.**
-- `.gitignore` corect: `node_modules`, `.dev.vars`, `.wrangler`, `dist`.
-- **IaC în repo:** wrangler config + `schema.sql` versionate.
-- **README** clar cu pași de setup local.
-- **Branch protection:** lucrăm prin PR pe branch-uri de feature, nu direct pe main.
-
-## Faze
-
-- [x] **Faza 0 — Schelet + tooling.** Structura de foldere, `package.json`,
-      wrangler config, tsconfig, ESLint, GitHub Actions, `.gitignore`, README,
-      PLAN.md. *(PR #1, mergeuit)*
-- [x] **Faza 1 — D1.** `schema.sql` + migrare. *(PR #2, mergeuit)*
-- [x] **Faza 2 — Worker + rute Hono.** users, profil simplu, rooms create/join. *(PR #3, mergeuit)*
-- [x] **Faza 3 — TMDb service.** cache KV + generarea pool-ului de deck per cameră. *(PR #4, mergeuit)*
-- [x] **Faza 4 — Durable Object.** stare live, WebSocket hibernation, detecție match. *(PR #5, mergeuit)*
-- [ ] **Faza 5 — Frontend.** swipe + match screen live + solo mode + toggle
-      film/serial (Workers Static Assets). *(în lucru / PR curent)*
-
-## Roadmap (NU în scope acum)
-
-### V2
-
-**V2.1 — Închide bucla (livrat):**
-- [x] Toggle film/serial funcțional live (`PATCH /rooms/:id` schimbă `media_type` + resetează pool-ul)
-- [x] Watch-provider filtering + „unde poate fi văzut" pe ecranul de match (provideri RO cu logo)
-- [x] Transparență algoritm pe match (gusturi comune + rating)
-- [x] WebSocket live testat end-to-end (inclusiv `deck_reset` la toggle)
-
-**V2.2 — Profiluri reale (următor):**
-- [ ] Quiz real cu scoring (înlocuiește `genre_scores = 1.0`)
-- [ ] Watchlist persistent pentru solo mode
-
-**V2.3 — Import date:**
-- [ ] Import CSV Letterboxd ca alternativă la quiz (cu batching pt. limita de subrequests)
-
-**Opțional:**
-- [ ] UI mai finisat (swipe cu gesturi/animații). *Nu* migrăm pe framework.
-
-### V3
-
-- Integrare Plex (verifică ce ai deja pe server)
-- Auto-queue în Radarr/Sonarr la match
-- Mod grup (3–5 useri)
-- Collaborative filtering pe istoricul de swipe-uri
-- Watchlist persistent pentru solo mode
-- Autentificare reală (momentan doar cod de invite + username)
+## Roadmap
+**V2.3** — Letterboxd CSV import (parse export → map to TMDb in batches → build genre_scores).
+**V3** — Plex check, auto-queue in Radarr/Sonarr/Overseerr on match, group mode (3–5 users),
+collaborative filtering, real auth. Polish: swipe gestures/animations (stay vanilla, no framework).

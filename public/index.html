@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ro">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Cinemate — prietenul tău de cinema</title>
+    <title>Cinemate — your movie buddy</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
@@ -16,48 +16,57 @@
       <section id="content">
         <!-- ── Onboarding ─────────────────────────────────────────── -->
         <div class="screen" id="screen-onboarding">
-          <h2>Bun venit 👋</h2>
-          <p class="muted">Cum te cheamă?</p>
-          <input id="username-input" class="input" type="text" placeholder="numele tău" maxlength="40" />
+          <h2>Welcome 👋</h2>
+          <p class="muted">What's your name?</p>
+          <input id="username-input" class="input" type="text" placeholder="your name" maxlength="40" />
 
-          <p class="muted mt">Ce genuri îți plac? (alege câteva)</p>
+          <p class="muted mt">Which genres do you like? <span class="hint">(tap once = like, twice = love)</span></p>
           <div id="genre-chips" class="chips"></div>
 
-          <button id="onboarding-continue" class="btn btn-primary mt">Continuă</button>
+          <p class="muted mt">Era</p>
+          <div class="toggle" id="era-toggle">
+            <button class="toggle-opt active" data-era="">Any</button>
+            <button class="toggle-opt" data-era="recent">Recent</button>
+            <button class="toggle-opt" data-era="classic">Classic</button>
+          </div>
+
+          <button id="onboarding-continue" class="btn btn-primary mt">Continue</button>
           <p id="onboarding-error" class="error"></p>
         </div>
 
         <!-- ── Lobby ──────────────────────────────────────────────── -->
         <div class="screen hidden" id="screen-lobby">
-          <h2>Ce facem?</h2>
+          <h2>What now?</h2>
 
           <div class="card-box">
-            <h3>Creează o cameră</h3>
+            <h3>Create a room</h3>
             <div class="toggle-row">
-              <span>Tip:</span>
+              <span>Type:</span>
               <div class="toggle" id="media-toggle">
-                <button class="toggle-opt active" data-media="movie">🎬 Filme</button>
-                <button class="toggle-opt" data-media="tv">📺 Seriale</button>
+                <button class="toggle-opt active" data-media="movie">🎬 Movies</button>
+                <button class="toggle-opt" data-media="tv">📺 TV shows</button>
               </div>
             </div>
-            <label class="muted">Platformă (opțional)</label>
+            <label class="muted">Platform (optional)</label>
             <select id="platform-select" class="input">
-              <option value="">Orice / Plex</option>
+              <option value="">Any / Plex</option>
               <option value="netflix">Netflix</option>
               <option value="disney">Disney+</option>
               <option value="hbo">HBO Max</option>
               <option value="prime">Prime Video</option>
               <option value="apple">Apple TV+</option>
             </select>
-            <label class="check-row"><input type="checkbox" id="solo-check" /> Mod solo (singur)</label>
-            <button id="create-room-btn" class="btn btn-primary mt">Creează</button>
+            <label class="check-row"><input type="checkbox" id="solo-check" /> Solo mode (just me)</label>
+            <button id="create-room-btn" class="btn btn-primary mt">Create</button>
           </div>
 
           <div class="card-box mt">
-            <h3>Intră cu un cod</h3>
-            <input id="join-code-input" class="input" type="text" placeholder="COD (6 caractere)" maxlength="6" />
-            <button id="join-room-btn" class="btn mt">Intră</button>
+            <h3>Join with a code</h3>
+            <input id="join-code-input" class="input" type="text" placeholder="CODE (6 chars)" maxlength="6" />
+            <button id="join-room-btn" class="btn mt">Join</button>
           </div>
+
+          <button id="watchlist-btn" class="btn-link mt">My watchlist</button>
           <p id="lobby-error" class="error"></p>
         </div>
 
@@ -65,11 +74,11 @@
         <div class="screen hidden" id="screen-swipe">
           <div class="room-bar">
             <span id="room-code-label" class="code"></span>
-            <div class="toggle small" id="swipe-media-toggle" title="schimbă film/serial">
+            <div class="toggle small" id="swipe-media-toggle" title="switch movies/TV">
               <button class="toggle-opt" data-media="movie">🎬</button>
               <button class="toggle-opt" data-media="tv">📺</button>
             </div>
-            <span id="ws-status" class="ws-status" title="conexiune live">●</span>
+            <span id="ws-status" class="ws-status" title="live connection">●</span>
           </div>
 
           <div id="deck-area" class="deck-area">
@@ -81,15 +90,15 @@
                 <p id="card-overview" class="overview"></p>
               </div>
             </div>
-            <p id="deck-empty" class="muted hidden">Gata deck-ul! 🎉 Verifică match-urile.</p>
-            <p id="deck-loading" class="muted">Se încarcă deck-ul…</p>
+            <p id="deck-empty" class="muted hidden">That's the whole deck! 🎉 Check your matches.</p>
+            <p id="deck-loading" class="muted">Loading the deck…</p>
           </div>
 
           <div class="swipe-actions">
-            <button id="dislike-btn" class="round-btn dislike" aria-label="Nu">✕</button>
-            <button id="like-btn" class="round-btn like" aria-label="Da">♥</button>
+            <button id="dislike-btn" class="round-btn dislike" aria-label="No">✕</button>
+            <button id="like-btn" class="round-btn like" aria-label="Yes">♥</button>
           </div>
-          <button id="view-matches-btn" class="btn-link mt">Vezi match-urile</button>
+          <button id="view-matches-btn" class="btn-link mt">View matches</button>
         </div>
 
         <!-- ── Match ──────────────────────────────────────────────── -->
@@ -100,19 +109,26 @@
           <p id="match-meta" class="muted"></p>
           <p id="match-reason" class="match-reason"></p>
           <div id="match-providers" class="providers"></div>
-          <a id="match-tmdb-link" class="btn-link" target="_blank" rel="noopener noreferrer">Vezi pe TMDb ↗</a>
-          <button id="match-continue-btn" class="btn btn-primary mt">Continuă swipe-ul</button>
+          <a id="match-tmdb-link" class="btn-link" target="_blank" rel="noopener noreferrer">View on TMDb ↗</a>
+          <button id="match-continue-btn" class="btn btn-primary mt">Keep swiping</button>
         </div>
 
         <!-- ── Matches list ───────────────────────────────────────── -->
         <div class="screen hidden" id="screen-matches">
-          <h2>Match-uri</h2>
+          <h2>Matches</h2>
           <div id="matches-list" class="matches-list"></div>
-          <button id="matches-back-btn" class="btn mt">Înapoi la swipe</button>
+          <button id="matches-back-btn" class="btn mt">Back to swiping</button>
+        </div>
+
+        <!-- ── Watchlist (solo) ───────────────────────────────────── -->
+        <div class="screen hidden" id="screen-watchlist">
+          <h2>My watchlist</h2>
+          <div id="watchlist-list" class="matches-list"></div>
+          <button id="watchlist-back-btn" class="btn mt">Back</button>
         </div>
       </section>
 
-      <!-- HARD: atribuire TMDb obligatorie. Nu șterge. -->
+      <!-- HARD: TMDb attribution is required. Do not remove. -->
       <footer class="attribution">
         This product uses the TMDB API but is not endorsed or certified by TMDB.
         <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">themoviedb.org</a>

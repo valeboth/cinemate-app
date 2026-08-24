@@ -1,56 +1,46 @@
-# Cinemate — configurare Cloudflare Workers
-# IaC versionat în repo. ID-urile reale (D1, KV) le completezi TU după ce
-# rulezi comenzile de creare (vezi README, secțiunea "Setup Cloudflare").
-# NU pune aici secrete (cheia TMDb) — ea merge prin `wrangler secret put`.
+# Cinemate — Cloudflare Workers configuration (IaC, versioned in the repo).
+# No secrets here (the TMDb key goes through `wrangler secret put`).
 
 name = "cinemate"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
-# Dezactivat: folosim DOAR custom domain-ul cinemate.valegboth.win.
-workers_dev = false
-# nodejs_compat: activat pentru eventuale API-uri Node folosite de Hono/parsers.
 compatibility_flags = ["nodejs_compat"]
+# Disabled: we only use the custom domain cinemate.valegboth.win.
+workers_dev = false
 
-# --- Frontend static (Workers Static Assets) ---
-# Worker-ul servește ȘI fișierele din public/ ȘI rutele /api pe același origin.
-# Assets-urile au prioritate: GET / -> index.html, /app.js -> fișier;
-# rutele care nu au fișier (ex. /api/*) ajung la Worker. Fără CORS, un singur deploy.
+# --- Static frontend (Workers Static Assets) ---
+# The Worker serves both the files in public/ and the /api routes on one origin.
+# Assets take priority: GET / -> index.html, /app.js -> file; routes without a
+# matching file (e.g. /api/*) reach the Worker. No CORS, a single deploy.
 [assets]
 directory = "./public"
 
 # --- Custom domain ---
-# Necesită ca zona valegboth.win să fie în același cont Cloudflare.
-# La deploy, wrangler creează automat înregistrarea DNS + certificatul TLS.
+# Requires the valegboth.win zone to be in the same Cloudflare account.
+# On deploy, wrangler provisions the DNS record + TLS certificate automatically.
 [[routes]]
 pattern = "cinemate.valegboth.win"
 custom_domain = true
 
-# --- D1 (baza de date relațională) ---
+# --- D1 (relational database) ---
 [[d1_databases]]
 binding = "DB"
 database_name = "cinemate-db"
 database_id = "579c4bc5-31e2-4523-8f67-ceb6e2ea56c4"
 
-# --- Workers KV (cache răspunsuri TMDb) ---
-# preview_id = același namespace ca prod: simplu, iar cache-ul TMDb e non-critic.
-# Pentru separare dev/prod „ca la carte": npx wrangler kv:namespace create TMDB_CACHE --preview
-# și pune id-ul de preview în preview_id.
+# --- Workers KV (TMDb response cache) ---
 [[kv_namespaces]]
 binding = "TMDB_CACHE"
 id = "c611f7ebdc324486ac99c396369c70a6"
 preview_id = "c611f7ebdc324486ac99c396369c70a6"
 
-# --- Durable Objects (stare live per cameră + WebSocket) ---
+# --- Durable Objects (live per-room state + WebSocket) ---
 [[durable_objects.bindings]]
 name = "ROOM"
 class_name = "Room"
 
-# HARD REQUIREMENT: DO pe SQLite storage backend (free tier).
-# => migrations cu `new_sqlite_classes`, NU `new_classes`.
+# HARD REQUIREMENT: DO on the SQLite storage backend (free tier).
+# => migrations with `new_sqlite_classes`, NOT `new_classes`.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
-
-# Notă: cheia TMDb (TMDB_API_KEY) NU e aici.
-#   - local: în .dev.vars (gitignored)
-#   - prod:  npx wrangler secret put TMDB_API_KEY

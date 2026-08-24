@@ -1,14 +1,14 @@
-// Tipuri comune Cinemate (Env, entități DB, deck).
+// Shared Cinemate types (Env, DB entities, deck).
 
-/** Bindings injectate de Cloudflare în Worker. Vezi wrangler.toml. */
+/** Bindings injected by Cloudflare into the Worker. See wrangler.toml. */
 export interface Env {
-  /** D1 — baza de date relațională. */
+  /** D1 — the relational database. */
   DB: D1Database;
-  /** KV — cache pentru răspunsurile TMDb (evită rate-limit). */
+  /** KV — cache for TMDb responses (avoids rate limiting). */
   TMDB_CACHE: KVNamespace;
-  /** Durable Object namespace — stare live per cameră. */
+  /** Durable Object namespace — live per-room state. */
   ROOM: DurableObjectNamespace;
-  /** Secret — cheia TMDb. NU e în cod; vine din .dev.vars / wrangler secret. */
+  /** Secret — the TMDb key. Never in code; comes from .dev.vars / wrangler secret. */
   TMDB_API_KEY: string;
 }
 
@@ -22,7 +22,7 @@ export interface User {
   created_at: string;
 }
 
-/** Profil de gusturi. genre_scores e JSON: { [genreId]: score 0..1 }. */
+/** Taste profile. genre_scores is JSON: { [genreId]: score 0..1 }. */
 export interface Profile {
   user_id: string;
   genre_scores: Record<string, number>;
@@ -38,7 +38,7 @@ export interface Room {
   user_b_id: string | null; // null = solo
   platform_filter: string | null;
   media_type: MediaType;
-  /** Pool-ul comun de tmdb_id, generat o singură dată per cameră (Faza 3). */
+  /** Shared pool of tmdb_id, generated once per room (see lib/deck.ts). */
   deck: number[];
   status: RoomStatus;
   created_at: string;
@@ -60,7 +60,7 @@ export interface Match {
   matched_at: string;
 }
 
-/** Un card în deck-ul de swipe (proiecție din TMDb pentru frontend). */
+/** A card in the swipe deck (a TMDb projection for the frontend). */
 export interface DeckCard {
   tmdb_id: number;
   media_type: MediaType;

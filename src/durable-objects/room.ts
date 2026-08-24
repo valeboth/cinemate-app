@@ -1,34 +1,34 @@
-// Durable Object — stare live per cameră (WebSocket + broadcast match).
+// Durable Object — live per-room state (WebSocket + match broadcast).
 //
 // HARD REQUIREMENTS:
-//  - SQLite storage backend (migrations `new_sqlite_classes` în wrangler.toml).
-//  - WebSocket Hibernation API: folosim `state.acceptWebSocket()` +
-//    handlerele `webSocketMessage/Close/Error`, deci DO-ul nu consumă compute
-//    cât camera e idle (conexiunile „hibernează").
+//  - SQLite storage backend (migrations `new_sqlite_classes` in wrangler.toml).
+//  - WebSocket Hibernation API: we use `state.acceptWebSocket()` + the
+//    `webSocketMessage/Close/Error` handlers, so the DO uses no compute while
+//    the room is idle (connections "hibernate").
 //
-// Arhitectură (D1 = sursa de adevăr, DO = live):
-//  - swipe-urile și match-urile se persistă în D1 de către Worker.
-//  - DO-ul ține DOAR conexiunile WebSocket și face fan-out („broadcast") când
-//    Worker-ul îi trimite un eveniment de match → clienții primesc live, fără refresh.
+// Architecture (D1 = source of truth, DO = live):
+//  - swipes and matches are persisted in D1 by the Worker.
+//  - the DO only holds the WebSocket connections and fans out ("broadcast")
+//    when the Worker sends a match event → clients get it live, no refresh.
 
 import type { Env } from "../types";
 
 export class Room {
   private state: DurableObjectState;
 
-  // env e primit dar nefolosit aici: D1 = sursa de adevăr (scrierile sunt în Worker),
-  // DO-ul doar face fan-out WebSocket.
+  // env is received but unused here: D1 is the source of truth (writes happen in
+  // the Worker); the DO only does WebSocket fan-out.
   constructor(state: DurableObjectState, _env: Env) {
     this.state = state;
   }
 
   async fetch(request: Request): Promise<Response> {
-    // Upgrade WebSocket (clientul se conectează la /api/rooms/:id/ws).
+    // WebSocket upgrade (the client connects to /api/rooms/:id/ws).
     if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
       const pair = new WebSocketPair();
       const client = pair[0];
       const server = pair[1];
-      // Hibernation: runtime-ul gestionează conexiunea; nu ținem noi referințe.
+      // Hibernation: the runtime manages the connection; we keep no references.
       this.state.acceptWebSocket(server);
       server.send(JSON.stringify({ type: "connected" }));
       return new Response(null, { status: 101, webSocket: client });
@@ -36,7 +36,7 @@ export class Room {
 
     const url = new URL(request.url);
 
-    // Broadcast intern: Worker-ul trimite aici un eveniment (ex. match) → fan-out.
+    // Internal broadcast: the Worker posts an event here (e.g. match) → fan-out.
     if (request.method === "POST" && url.pathname.endsWith("/broadcast")) {
       const payload = await request.text();
       let sent = 0;
@@ -45,7 +45,7 @@ export class Room {
           ws.send(payload);
           sent++;
         } catch {
-          // client deconectat — ignorăm
+          // client disconnected — ignore
         }
       }
       return Response.json({ ok: true, sent });
@@ -54,9 +54,9 @@ export class Room {
     return new Response("not found", { status: 404 });
   }
 
-  // --- Handlere Hibernation ---
+  // --- Hibernation handlers ---
   webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): void {
-    // Keep-alive: clientul poate trimite un ping.
+    // Keep-alive: the client may send a ping.
     if (typeof message === "string" && message.includes("ping")) {
       ws.send(JSON.stringify({ type: "pong" }));
     }
@@ -66,11 +66,11 @@ export class Room {
     try {
       ws.close(code);
     } catch {
-      // deja închis
+      // already closed
     }
   }
 
   webSocketError(): void {
-    // nimic de făcut — runtime-ul curăță conexiunea
+    // nothing to do — the runtime cleans up the connection
   }
 }

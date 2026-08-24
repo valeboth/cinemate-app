@@ -1,17 +1,17 @@
-// Generarea pool-ului comun de deck per cameră.
+// Building the shared candidate pool (deck) per room.
 //
-// HARD: pool-ul se generează O SINGURĂ DATĂ per cameră și se salvează (rooms.deck
-// = listă de tmdb_id). Ambii useri trag din ACELAȘI pool → garantează suprapunerea
-// necesară pentru match. Ordinea poate diferi/shuffle per user; contează pool-ul.
+// HARD: the pool is generated ONCE per room and saved (rooms.deck = list of tmdb_id).
+// Both users draw from the SAME pool → this guarantees the overlap needed for a match.
+// The order may be shuffled per user; what matters is the shared pool, not the order.
 
 import type { DeckCard, Env, MediaType, Profile, Room } from "../types";
-import { discoverTitles, getGenreMap, getTitleCard } from "../services/tmdb";
+import { discoverTitles, getGenreMap, getTitleCard, type Era } from "../services/tmdb";
 import { mapProfile } from "./mappers";
 
 const TOP_GENRES = 3;
 const MIN_DECK = 5;
 const DECK_CARDS_KV_PREFIX = "deck-cards:";
-const DECK_CARDS_TTL = 60 * 60 * 24 * 7; // 7 zile
+const DECK_CARDS_TTL = 60 * 60 * 24 * 7; // 7 days
 
 async function loadProfile(env: Env, userId: string | null): Promise<Profile | null> {
   if (!userId) return null;
@@ -21,7 +21,7 @@ async function loadProfile(env: Env, userId: string | null): Promise<Profile | n
   return row ? mapProfile(row) : null;
 }
 
-/** Combină genre_scores ale ambilor useri (medie) → top genre ids. */
+/** Combine both users' genre_scores (average) → top genre ids. */
 function combineTopGenres(a: Profile | null, b: Profile | null): number[] {
   const totals = new Map<number, { sum: number; count: number }>();
   for (const p of [a, b]) {
@@ -42,6 +42,15 @@ function combineTopGenres(a: Profile | null, b: Profile | null): number[] {
     .map((g) => g.id);
 }
 
+/** Shared era preference: use it only if both users agree (or solo). */
+function combineEra(a: Profile | null, b: Profile | null): Era | null {
+  const eras = [a?.era_pref, b?.era_pref].filter(
+    (e): e is Era => e === "recent" || e === "classic",
+  );
+  if (eras.length === 0) return null;
+  return eras.every((e) => e === eras[0]) ? eras[0] : null;
+}
+
 async function rebuildCardsForPool(env: Env, room: Room): Promise<DeckCard[]> {
   const results = await Promise.all(
     room.deck.map((id) => getTitleCard(env, room.media_type, id)),
@@ -52,19 +61,19 @@ async function rebuildCardsForPool(env: Env, room: Room): Promise<DeckCard[]> {
 export interface DeckResult {
   room_id: string;
   media_type: MediaType;
-  /** true dacă pool-ul tocmai a fost generat la acest apel. */
+  /** true if the pool was just generated on this call. */
   generated: boolean;
   cards: DeckCard[];
 }
 
 /**
- * Servește deck-ul camerei: dacă pool-ul există deja (rooms.deck) îl întoarce,
- * altfel îl generează O SINGURĂ DATĂ (combină profiluri → discover → salvează).
+ * Serve the room deck: if the pool already exists (rooms.deck) return it,
+ * otherwise generate it ONCE (combine profiles → discover → save).
  */
 export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult> {
   const cardsKey = DECK_CARDS_KV_PREFIX + room.id;
 
-  // Deja generat.
+  // Already generated.
   if (room.deck.length > 0) {
     const cached = await env.TMDB_CACHE.get(cardsKey);
     const cards = cached
@@ -76,21 +85,23 @@ export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult>
     return { room_id: room.id, media_type: room.media_type, generated: false, cards };
   }
 
-  // Prima generare.
+  // First generation.
   const [profileA, profileB] = await Promise.all([
     loadProfile(env, room.user_a_id),
     loadProfile(env, room.user_b_id),
   ]);
   const genreIds = combineTopGenres(profileA, profileB);
+  const era = combineEra(profileA, profileB);
 
   let cards = await discoverTitles(env, {
     mediaType: room.media_type,
     genreIds,
+    era,
     platform: room.platform_filter,
     pages: 2,
   });
 
-  // Fallback: filtrele au dat prea puține → reia fără platformă/genuri.
+  // Fallback: filters returned too few → retry without platform/genres/era.
   if (cards.length < MIN_DECK) {
     cards = await discoverTitles(env, { mediaType: room.media_type, pages: 2 });
   }
@@ -104,7 +115,7 @@ export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult>
   return { room_id: room.id, media_type: room.media_type, generated: true, cards };
 }
 
-/** Caută un card în cache-ul de deck al camerei (pentru ecranul de match). */
+/** Find a card in the room's deck cache (for the match screen). */
 export async function getCardFromDeck(
   env: Env,
   roomId: string,
@@ -116,15 +127,15 @@ export async function getCardFromDeck(
   return cards.find((c) => c.tmdb_id === tmdbId) ?? null;
 }
 
-/** Resetează pool-ul camerei (rooms.deck=[] + cache carduri) → se regenerează la următorul /deck. */
+/** Reset the room pool (rooms.deck=[] + card cache) → regenerated on the next /deck. */
 export async function resetDeck(env: Env, roomId: string): Promise<void> {
   await env.DB.prepare("UPDATE rooms SET deck = '[]' WHERE id = ?").bind(roomId).run();
   await env.TMDB_CACHE.delete(DECK_CARDS_KV_PREFIX + roomId);
 }
 
 /**
- * Explicație „de ce a ieșit match": gusturi comune (genuri) + rating.
- * Transparență pe algoritm — diferențiatorul din brief.
+ * "Why did this match" explanation: shared taste (genres) + rating.
+ * Algorithm transparency — the differentiator from the brief.
  */
 export async function buildMatchReason(env: Env, room: Room, card: DeckCard | null): Promise<string> {
   const parts: string[] = [];
@@ -138,9 +149,9 @@ export async function buildMatchReason(env: Env, room: Room, card: DeckCard | nu
     if (shared.length > 0) {
       const gmap = await getGenreMap(env, room.media_type);
       const names = shared.map((id) => gmap[id]).filter(Boolean);
-      if (names.length > 0) parts.push("gusturi comune: " + names.join(", "));
+      if (names.length > 0) parts.push("shared taste: " + names.join(", "));
     }
   }
   if (card?.vote_average) parts.push(`rating ${card.vote_average.toFixed(1)}`);
-  return parts.join(" · ") || "amândoi ați dat like";
+  return parts.join(" · ") || "you both liked it";
 }

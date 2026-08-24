@@ -1,118 +1,96 @@
 # Cinemate 🎬
 
-**Tinder pentru filme/seriale.** Doi useri intră într-o cameră printr-un cod de
-invite, primesc împreună un deck de titluri, fac swipe, iar când amândoi dau like
-pe același titlu → **match** = filmul câștigător (ecran dedicat, live prin
-WebSocket, fără refresh). Merge și **solo** (orice like = watchlist personal).
+**Tinder for movies & TV shows.** Two users join a room with an invite code, get a
+shared deck of titles, swipe, and when both like the same title → **match** = the
+winning title (dedicated screen, live over WebSocket, no refresh). Works **solo**
+too (any like = personal watchlist).
 
-Totul pe **free tier Cloudflare**.
+Runs entirely on **Cloudflare free tier**.
 
 ## Stack
 
-| Piesă         | Serviciu                       | Rol                                     |
-| ------------- | ------------------------------ | --------------------------------------- |
-| Frontend      | Workers Static Assets (public/)| UI de swipe (vanilla HTML/CSS/JS în V1) |
-| API           | Cloudflare Workers (Hono/TS)   | rutare, logică, auth simplu             |
-| DB relațională| D1 (SQLite)                  | users, profiles, rooms, swipes, matches |
-| Stare live    | Durable Objects + WebSocket  | sesiune de swipe, match instant         |
-| Cache         | Workers KV                   | răspunsuri TMDb (evită rate-limit)      |
-| Date filme    | TMDb API                     | postere, titlu, gen, descriere, providers |
+| Piece      | Service                        | Role                                       |
+| ---------- | ------------------------------ | ------------------------------------------ |
+| Frontend   | Workers Static Assets (`public/`) | swipe UI (vanilla HTML/CSS/JS)          |
+| API        | Cloudflare Workers (Hono/TS)   | routing, logic, simple auth                |
+| Database   | D1 (SQLite)                    | users, profiles, rooms, swipes, matches    |
+| Live state | Durable Objects + WebSocket    | swipe session, instant match broadcast     |
+| Cache      | Workers KV                     | TMDb responses (avoids rate limiting)      |
+| Movie data | TMDb API                       | posters, titles, genres, overview, providers |
 
-## Structura proiectului
+The Worker serves both the static frontend and `/api/*` on the **same origin**, so
+there is no CORS and a single `wrangler deploy` ships everything.
+
+## Project layout
 
 ```
 cinemate/
-├── PLAN.md                 # planul complet, pe faze
-├── wrangler.toml           # config Workers + D1 + DO + KV bindings
-├── package.json
-├── schema.sql              # schema D1 (Faza 1)
-├── eslint.config.js
-├── tsconfig.json
-├── .dev.vars.example       # șablon pentru secretul TMDb local
+├── PLAN.md               # roadmap
+├── wrangler.toml         # Workers + D1 + DO + KV + Static Assets config
+├── schema.sql            # D1 schema
 ├── src/
-│   ├── index.ts            # Worker principal, rute Hono
-│   ├── types.ts            # tipuri comune (Env, Profile, Room, DeckCard...)
-│   ├── services/
-│   │   └── tmdb.ts         # integrare TMDb + cache KV
-│   └── durable-objects/
-│       └── room.ts         # stare live cameră (swipe, match, WebSocket)
-└── public/                 # frontend static (Pages)
-    ├── index.html
-    ├── style.css
-    └── app.js
+│   ├── index.ts          # Worker entry, mounts Hono routes
+│   ├── types.ts          # shared types (Env, Profile, Room, DeckCard…)
+│   ├── routes/           # users, profile, rooms
+│   ├── services/tmdb.ts  # TMDb integration + KV cache
+│   ├── lib/              # ids, db helpers, mappers, deck
+│   └── durable-objects/room.ts  # live room state (WebSocket, broadcast)
+└── public/               # static frontend (index.html, style.css, app.js)
 ```
 
-## Setup local
+## Local setup
 
-### 1. Prerechizite
+### 1. Prerequisites
+`node` (18+), `npm`, `git`. `wrangler` comes as a dev dependency.
 
-`node` (18+), `npm`, `git`, `gh` (opțional), și `wrangler` (vine ca devDependency).
-
-### 2. Instalare
-
+### 2. Install
 ```bash
 npm install
 ```
 
-### 3. Secretul TMDb (local)
-
-Obține o cheie gratuită de la <https://www.themoviedb.org/settings/api>, apoi:
-
+### 3. TMDb key (local)
+Get a free key at <https://www.themoviedb.org/settings/api>, then:
 ```bash
-cp .dev.vars.example .dev.vars
-# editează .dev.vars și pune cheia reală în TMDB_API_KEY
+cp .dev.vars.example .dev.vars   # then put your key in TMDB_API_KEY
+```
+`.dev.vars` is gitignored — **the key never lands in the repo or the frontend**.
+
+### 4. Cloudflare resources (create once)
+```bash
+npx wrangler d1 create cinemate-db            # copy database_id into wrangler.toml
+npx wrangler kv:namespace create TMDB_CACHE   # copy id into wrangler.toml
+npm run db:migrate:remote                     # apply schema.sql to remote D1
+npx wrangler secret put TMDB_API_KEY          # production secret
 ```
 
-`.dev.vars` e gitignored — **cheia nu ajunge niciodată în repo sau în frontend**.
-
-### 4. Resurse Cloudflare (le creezi TU, o singură dată)
-
-> Nu le creează asistentul. Rulează comenzile, apoi copiază ID-urile în `wrangler.toml`.
-
+### 5. Run locally
+One server serves both the frontend and the API (same origin):
 ```bash
-# D1 — copiază database_id în wrangler.toml
-npx wrangler d1 create cinemate-db
-
-# KV — copiază id în wrangler.toml
-npx wrangler kv:namespace create TMDB_CACHE
-
-# aplică schema (după Faza 1, când există schema.sql)
-npx wrangler d1 execute cinemate-db --local --file=schema.sql
-
-# secret pentru prod (local folosește .dev.vars)
-npx wrangler secret put TMDB_API_KEY
+npm run db:migrate:local   # apply schema to the local D1 (once)
+npx wrangler dev           # open http://localhost:8787
 ```
 
-### 5. Rulare dev
+## npm scripts
 
-Un singur server servește și frontend-ul static și API-ul (same-origin):
-
-```bash
-npx wrangler dev
-```
-→ deschide **http://localhost:8787** (UI-ul) — `/api/*` e servit de același Worker.
-
-## Scripturi npm
-
-| Script               | Ce face                                    |
-| -------------------- | ------------------------------------------ |
-| `npm run dev`        | rulează local Worker-ul + frontend-ul (`wrangler dev`) |
-| `npm run typecheck`  | `tsc --noEmit`                             |
-| `npm run lint`       | ESLint                                      |
-| `npm run build`      | bundling dry-run (validare build)          |
-| `npm run db:migrate:local` | aplică `schema.sql` pe D1 local      |
+| Script                     | What it does                          |
+| -------------------------- | ------------------------------------- |
+| `npm run dev`              | run the Worker + frontend locally     |
+| `npm run typecheck`        | `tsc --noEmit`                        |
+| `npm run lint`             | ESLint                                |
+| `npm run build`            | bundling dry-run (build validation)   |
+| `npm run deploy`           | deploy Worker + static assets         |
+| `npm run db:migrate:local` | apply `schema.sql` to the local D1    |
+| `npm run db:migrate:remote`| apply `schema.sql` to the remote D1   |
 
 ## CI/CD
-
 - **PR → main**: lint + typecheck + build (`.github/workflows/ci.yml`).
-- **push → main**: un singur `wrangler deploy` (Worker + frontend static) (`.github/workflows/deploy.yml`).
-  Necesită secretele de repo `CLOUDFLARE_API_TOKEN` și `CLOUDFLARE_ACCOUNT_ID`.
+- **push → main**: a single `wrangler deploy` (Worker + static frontend)
+  (`.github/workflows/deploy.yml`). Needs repo secrets `CLOUDFLARE_API_TOKEN` and
+  `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Status
+See [PLAN.md](./PLAN.md). V1 and V2.1–V2.2 are done; more on the roadmap.
 
-Vezi [PLAN.md](./PLAN.md). În lucru pe faze — V1 (schelet funcțional).
-
-## Atribuire
-
+## Attribution
 This product uses the TMDB API but is not endorsed or certified by TMDB.
 <https://www.themoviedb.org>

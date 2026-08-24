@@ -1,36 +1,41 @@
-// Cinemate frontend — vanilla JS (fără framework în V1).
+// Cinemate frontend — vanilla JS (no framework in V1).
 
-// ── Config API ────────────────────────────────────────────────────────────
-// Same-origin: Worker-ul servește și static-ul (Workers Static Assets) și /api.
+// ── API config ─────────────────────────────────────────────────────────────
+// Same-origin: the Worker serves both the static assets (Workers Static Assets) and /api.
 const API_BASE = "";
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
+const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
 
 function wsUrl(path) {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${location.host}${path}`;
 }
 
-// ── Genuri TMDb (subset pentru quiz) ──────────────────────────────────────
+// ── TMDb genres (quiz subset) ───────────────────────────────────────────────
 const GENRES = [
-  { id: 28, name: "Acțiune" },
-  { id: 12, name: "Aventură" },
-  { id: 35, name: "Comedie" },
-  { id: 18, name: "Dramă" },
+  { id: 28, name: "Action" },
+  { id: 12, name: "Adventure" },
+  { id: 35, name: "Comedy" },
+  { id: 18, name: "Drama" },
   { id: 27, name: "Horror" },
-  { id: 878, name: "SF" },
+  { id: 878, name: "Sci-Fi" },
   { id: 53, name: "Thriller" },
-  { id: 10749, name: "Romantic" },
-  { id: 16, name: "Animație" },
-  { id: 9648, name: "Mister" },
-  { id: 14, name: "Fantezie" },
-  { id: 80, name: "Crimă" },
+  { id: 10749, name: "Romance" },
+  { id: 16, name: "Animation" },
+  { id: 9648, name: "Mystery" },
+  { id: 14, name: "Fantasy" },
+  { id: 80, name: "Crime" },
 ];
 
-// ── Stare aplicație ────────────────────────────────────────────────────────
+// Genre score by level: 1 = like, 2 = love.
+const LEVEL_SCORE = { 1: 0.6, 2: 1.0 };
+
+// ── App state ───────────────────────────────────────────────────────────────
 const state = {
   userId: localStorage.getItem("cinemate_user_id") || null,
   username: localStorage.getItem("cinemate_username") || null,
-  selectedGenres: new Set(),
+  genreLevels: {}, // genreId -> 1 (like) | 2 (love)
+  era: "", // "" | "recent" | "classic"
   mediaType: "movie",
   room: null,
   soloMode: false,
@@ -39,7 +44,7 @@ const state = {
   ws: null,
 };
 
-// ── Helperi API ──────────────────────────────────────────────────────────
+// ── API helper ──────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
   const res = await fetch(API_BASE + path, {
     headers: { "content-type": "application/json" },
@@ -50,7 +55,7 @@ async function api(path, opts = {}) {
   return data;
 }
 
-// ── Navigare ecrane ────────────────────────────────────────────────────────
+// ── Screen navigation ─────────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.add("hidden"));
   document.getElementById(id).classList.remove("hidden");
@@ -80,17 +85,32 @@ function renderGenreChips() {
   GENRES.forEach((g) => {
     const chip = document.createElement("button");
     chip.className = "chip";
+    chip.dataset.id = g.id;
     chip.textContent = g.name;
     chip.onclick = () => {
-      if (state.selectedGenres.has(g.id)) {
-        state.selectedGenres.delete(g.id);
-        chip.classList.remove("active");
+      const level = (state.genreLevels[g.id] || 0) + 1;
+      if (level > 2) {
+        delete state.genreLevels[g.id];
+        chip.classList.remove("like", "love");
+        chip.textContent = g.name;
       } else {
-        state.selectedGenres.add(g.id);
-        chip.classList.add("active");
+        state.genreLevels[g.id] = level;
+        chip.classList.toggle("like", level === 1);
+        chip.classList.toggle("love", level === 2);
+        chip.textContent = g.name + (level === 2 ? " ♥♥" : " ♥");
       }
     };
     box.appendChild(chip);
+  });
+}
+
+function setupEraToggle() {
+  document.querySelectorAll("#era-toggle .toggle-opt").forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll("#era-toggle .toggle-opt").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.era = btn.dataset.era;
+    };
   });
 }
 
@@ -99,7 +119,7 @@ async function handleOnboarding() {
   err.textContent = "";
   const username = $("username-input").value.trim();
   if (!username) {
-    err.textContent = "Scrie un nume.";
+    err.textContent = "Please enter a name.";
     return;
   }
   try {
@@ -112,20 +132,23 @@ async function handleOnboarding() {
     localStorage.setItem("cinemate_user_id", user.id);
     localStorage.setItem("cinemate_username", user.username);
 
-    // genre_scores: 1.0 pentru genurile alese
     const genreScores = {};
-    state.selectedGenres.forEach((id) => {
-      genreScores[id] = 1.0;
-    });
+    for (const [id, level] of Object.entries(state.genreLevels)) {
+      genreScores[id] = LEVEL_SCORE[level] || 0.6;
+    }
     await api("/api/profile/quiz", {
       method: "POST",
-      body: JSON.stringify({ user_id: user.id, genre_scores: genreScores }),
+      body: JSON.stringify({
+        user_id: user.id,
+        genre_scores: genreScores,
+        era_pref: state.era || null,
+      }),
     });
 
     updateUserBadge();
     showScreen("screen-lobby");
   } catch (e) {
-    err.textContent = "Eroare: " + e.message;
+    err.textContent = "Error: " + e.message;
   }
 }
 
@@ -159,7 +182,7 @@ async function handleCreateRoom() {
     state.soloMode = solo;
     enterSwipe();
   } catch (e) {
-    err.textContent = "Eroare: " + e.message;
+    err.textContent = "Error: " + e.message;
   }
 }
 
@@ -168,7 +191,7 @@ async function handleJoinRoom() {
   err.textContent = "";
   const code = $("join-code-input").value.trim().toUpperCase();
   if (code.length !== 6) {
-    err.textContent = "Codul are 6 caractere.";
+    err.textContent = "The code has 6 characters.";
     return;
   }
   try {
@@ -178,9 +201,10 @@ async function handleJoinRoom() {
     });
     state.room = room;
     state.soloMode = false;
+    state.mediaType = room.media_type;
     enterSwipe();
   } catch (e) {
-    err.textContent = "Eroare: " + e.message;
+    err.textContent = "Error: " + e.message;
   }
 }
 
@@ -196,7 +220,7 @@ async function enterSwipe() {
 async function loadDeck() {
   $("card").classList.add("hidden");
   $("deck-empty").classList.add("hidden");
-  $("deck-loading").textContent = "Se încarcă deck-ul…";
+  $("deck-loading").textContent = "Loading the deck…";
   $("deck-loading").classList.remove("hidden");
   try {
     const res = await api(`/api/rooms/${state.room.id}/deck`);
@@ -205,7 +229,7 @@ async function loadDeck() {
     $("deck-loading").classList.add("hidden");
     renderCard();
   } catch (e) {
-    $("deck-loading").textContent = "Eroare la deck: " + e.message;
+    $("deck-loading").textContent = "Deck error: " + e.message;
   }
 }
 
@@ -215,7 +239,7 @@ function syncMediaToggle() {
   });
 }
 
-// Toggle film/serial live: schimbă media_type pe cameră → pool-ul se regenerează.
+// Live movie/TV toggle: change media_type on the room → the pool regenerates.
 async function toggleMedia(media) {
   if (media === state.mediaType) return;
   try {
@@ -249,7 +273,7 @@ function renderCard() {
   if (card.release_year) bits.push(card.release_year);
   if (card.vote_average) bits.push("⭐ " + card.vote_average.toFixed(1));
   $("card-meta").textContent = bits.join("  ·  ");
-  $("card-overview").textContent = card.overview || "(fără descriere)";
+  $("card-overview").textContent = card.overview || "(no description)";
 }
 
 async function swipe(direction) {
@@ -260,15 +284,11 @@ async function swipe(direction) {
   try {
     const res = await api(`/api/rooms/${state.room.id}/swipe`, {
       method: "POST",
-      body: JSON.stringify({
-        user_id: state.userId,
-        tmdb_id: card.tmdb_id,
-        direction,
-      }),
+      body: JSON.stringify({ user_id: state.userId, tmdb_id: card.tmdb_id, direction }),
     });
     if (res.matched && res.is_new_match) {
       if (state.soloMode) {
-        toast("💾 Salvat în watchlist");
+        toast("💾 Saved to watchlist");
       } else {
         showMatch(card, res.match_reason);
       }
@@ -278,9 +298,9 @@ async function swipe(direction) {
   }
 }
 
-// ── WebSocket live ────────────────────────────────────────────────────────────
+// ── WebSocket (live) ────────────────────────────────────────────────────────
 function connectWs() {
-  if (state.soloMode) return; // fără live în solo
+  if (state.soloMode) return; // no live in solo
   closeWs();
   const ws = new WebSocket(wsUrl(`/api/rooms/${state.room.id}/ws`));
   state.ws = ws;
@@ -302,7 +322,7 @@ function connectWs() {
         };
       showMatch(card, msg.reason);
     } else if (msg.type === "deck_reset") {
-      // celălalt user a schimbat film/serial → sincronizăm și reîncărcăm deck-ul
+      // the other user switched movie/TV → sync and reload the deck
       if (msg.media_type) {
         state.mediaType = msg.media_type;
         if (state.room) state.room.media_type = msg.media_type;
@@ -318,15 +338,13 @@ function closeWs() {
     try {
       state.ws.close();
     } catch {
-      /* deja închis */
+      /* already closed */
     }
     state.ws = null;
   }
 }
 
 // ── Match screen ────────────────────────────────────────────────────────────
-const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
-
 function showMatch(card, reason) {
   $("match-poster").style.backgroundImage = card.poster_path
     ? `url(${TMDB_IMG}${card.poster_path})`
@@ -343,7 +361,7 @@ function showMatch(card, reason) {
   showScreen("screen-match");
 }
 
-// „Unde poate fi văzut" — watch providers RO (streaming prioritizat).
+// "Where to watch" — RO watch providers (streaming first).
 async function renderProviders(tmdbId) {
   const box = $("match-providers");
   box.innerHTML = "";
@@ -352,12 +370,12 @@ async function renderProviders(tmdbId) {
     const p = res.providers || {};
     const list = (p.flatrate && p.flatrate.length ? p.flatrate : p.rent || []).slice(0, 5);
     if (!list.length) {
-      box.innerHTML = "<span class='muted'>Fără date de streaming în RO</span>";
+      box.innerHTML = "<span class='muted'>No RO streaming data</span>";
       return;
     }
     const label = document.createElement("span");
     label.className = "muted providers-label";
-    label.textContent = p.flatrate && p.flatrate.length ? "Streaming:" : "Închiriere:";
+    label.textContent = p.flatrate && p.flatrate.length ? "Streaming:" : "Rent:";
     box.appendChild(label);
     list.forEach((prov) => {
       const el = document.createElement("span");
@@ -378,54 +396,73 @@ async function renderProviders(tmdbId) {
   }
 }
 
-// ── Matches list ────────────────────────────────────────────────────────────
+// ── Card lists (matches + watchlist) ──────────────────────────────────────────
+function renderCardList(container, items, emptyText) {
+  container.innerHTML = "";
+  if (!items.length) {
+    container.innerHTML = `<p class='muted'>${emptyText}</p>`;
+    return;
+  }
+  items.forEach((m) => {
+    const c = m.card || {};
+    const item = document.createElement("div");
+    item.className = "match-item";
+    const poster = document.createElement("div");
+    poster.className = "poster";
+    if (c.poster_path) poster.style.backgroundImage = `url(${TMDB_IMG}${c.poster_path})`;
+    const info = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = c.title || `#${m.tmdb_id}`;
+    const link = document.createElement("a");
+    link.className = "btn-link";
+    link.textContent = "View on TMDb ↗";
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.href = `https://www.themoviedb.org/${m.media_type}/${m.tmdb_id}`;
+    info.appendChild(title);
+    info.appendChild(document.createElement("br"));
+    info.appendChild(link);
+    item.appendChild(poster);
+    item.appendChild(info);
+    container.appendChild(item);
+  });
+}
+
 async function showMatchesList() {
   showScreen("screen-matches");
   const list = $("matches-list");
-  list.innerHTML = "<p class='muted'>Se încarcă…</p>";
+  list.innerHTML = "<p class='muted'>Loading…</p>";
   try {
     const res = await api(`/api/rooms/${state.room.id}/matches`);
-    if (!res.matches.length) {
-      list.innerHTML = "<p class='muted'>Încă niciun match.</p>";
-      return;
-    }
-    list.innerHTML = "";
-    res.matches.forEach((m) => {
-      const c = m.card || {};
-      const item = document.createElement("div");
-      item.className = "match-item";
-      const poster = document.createElement("div");
-      poster.className = "poster";
-      if (c.poster_path) poster.style.backgroundImage = `url(${TMDB_IMG}${c.poster_path})`;
-      const info = document.createElement("div");
-      const title = document.createElement("strong");
-      title.textContent = c.title || `#${m.tmdb_id}`;
-      const link = document.createElement("a");
-      link.className = "btn-link";
-      link.textContent = "Vezi pe TMDb ↗";
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.href = `https://www.themoviedb.org/${m.media_type}/${m.tmdb_id}`;
-      info.appendChild(title);
-      info.appendChild(document.createElement("br"));
-      info.appendChild(link);
-      item.appendChild(poster);
-      item.appendChild(info);
-      list.appendChild(item);
-    });
+    renderCardList(list, res.matches || [], "No matches yet.");
   } catch (e) {
-    list.innerHTML = "<p class='error'>Eroare: " + e.message + "</p>";
+    list.innerHTML = "<p class='error'>Error: " + e.message + "</p>";
+  }
+}
+
+async function showWatchlist() {
+  showScreen("screen-watchlist");
+  const list = $("watchlist-list");
+  list.innerHTML = "<p class='muted'>Loading…</p>";
+  try {
+    const res = await api(`/api/users/${state.userId}/watchlist`);
+    renderCardList(list, res.watchlist || [], "Your watchlist is empty. Like titles in solo mode.");
+  } catch (e) {
+    list.innerHTML = "<p class='error'>Error: " + e.message + "</p>";
   }
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 function init() {
   renderGenreChips();
+  setupEraToggle();
   setupMediaToggle();
 
   $("onboarding-continue").onclick = handleOnboarding;
   $("create-room-btn").onclick = handleCreateRoom;
   $("join-room-btn").onclick = handleJoinRoom;
+  $("watchlist-btn").onclick = showWatchlist;
+  $("watchlist-back-btn").onclick = () => showScreen("screen-lobby");
   $("like-btn").onclick = () => swipe("like");
   $("dislike-btn").onclick = () => swipe("dislike");
   document.querySelectorAll("#swipe-media-toggle .toggle-opt").forEach((b) => {
@@ -435,7 +472,7 @@ function init() {
   $("matches-back-btn").onclick = () => showScreen("screen-swipe");
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");
 
-  // Utilizator deja cunoscut → sari peste onboarding.
+  // Known user → skip onboarding.
   if (state.userId && state.username) {
     updateUserBadge();
     showScreen("screen-lobby");
