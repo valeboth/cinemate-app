@@ -6,6 +6,8 @@
 name = "cinemate"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
+# Dezactivat: folosim DOAR custom domain-ul cinemate.valegboth.win.
+workers_dev = false
 # nodejs_compat: activat pentru eventuale API-uri Node folosite de Hono/parsers.
 compatibility_flags = ["nodejs_compat"]
 
@@ -15,6 +17,13 @@ compatibility_flags = ["nodejs_compat"]
 # rutele care nu au fișier (ex. /api/*) ajung la Worker. Fără CORS, un singur deploy.
 [assets]
 directory = "./public"
+
+# --- Custom domain ---
+# Necesită ca zona valegboth.win să fie în același cont Cloudflare.
+# La deploy, wrangler creează automat înregistrarea DNS + certificatul TLS.
+[[routes]]
+pattern = "cinemate.valegboth.win"
+custom_domain = true
 
 # --- D1 (baza de date relațională) ---
 [[d1_databases]]
