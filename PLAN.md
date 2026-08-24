@@ -72,8 +72,8 @@ personal).
 - [x] **Faza 0 — Schelet + tooling.** Structura de foldere, `package.json`,
       wrangler config, tsconfig, ESLint, GitHub Actions, `.gitignore`, README,
       PLAN.md. *(PR #1, mergeuit)*
-- [ ] **Faza 1 — D1.** `schema.sql` + migrare. *(în lucru / PR curent)*
-- [ ] **Faza 2 — Worker + rute Hono.** users, profil simplu, rooms create/join.
+- [x] **Faza 1 — D1.** `schema.sql` + migrare. *(PR #2, mergeuit)*
+- [ ] **Faza 2 — Worker + rute Hono.** users, profil simplu, rooms create/join. *(în lucru / PR curent)*
 - [ ] **Faza 3 — TMDb service.** cache KV + generarea pool-ului de deck per cameră.
 - [ ] **Faza 4 — Durable Object.** stare live, WebSocket hibernation, detecție match.
 - [ ] **Faza 5 — Frontend.** swipe pe Pages + match screen + solo mode + toggle
