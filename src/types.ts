@@ -38,6 +38,8 @@ export interface Room {
   user_b_id: string | null; // null = solo
   platform_filter: string | null;
   media_type: MediaType;
+  /** Pool-ul comun de tmdb_id, generat o singură dată per cameră (Faza 3). */
+  deck: number[];
   status: RoomStatus;
   created_at: string;
 }
