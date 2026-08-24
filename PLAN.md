@@ -83,12 +83,21 @@ personal).
 
 ### V2
 
-- Quiz real cu scoring (înlocuiește profilul default hardcodat)
-- Import CSV Letterboxd ca alternativă la quiz
-- Watch-provider filtering complet funcțional
-- Toggle film/serial funcțional (schimbă `media_type` real în DB)
-- WebSocket live testat end-to-end
-- UI mai finisat (posibil migrare pe React/Svelte pe Pages)
+**V2.1 — Închide bucla (livrat):**
+- [x] Toggle film/serial funcțional live (`PATCH /rooms/:id` schimbă `media_type` + resetează pool-ul)
+- [x] Watch-provider filtering + „unde poate fi văzut" pe ecranul de match (provideri RO cu logo)
+- [x] Transparență algoritm pe match (gusturi comune + rating)
+- [x] WebSocket live testat end-to-end (inclusiv `deck_reset` la toggle)
+
+**V2.2 — Profiluri reale (următor):**
+- [ ] Quiz real cu scoring (înlocuiește `genre_scores = 1.0`)
+- [ ] Watchlist persistent pentru solo mode
+
+**V2.3 — Import date:**
+- [ ] Import CSV Letterboxd ca alternativă la quiz (cu batching pt. limita de subrequests)
+
+**Opțional:**
+- [ ] UI mai finisat (swipe cu gesturi/animații). *Nu* migrăm pe framework.
 
 ### V3
 

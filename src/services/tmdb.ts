@@ -166,6 +166,65 @@ export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<D
   return cards;
 }
 
+interface TmdbProviderEntry {
+  provider_id: number;
+  provider_name: string;
+  logo_path?: string | null;
+}
+interface TmdbProvidersResponse {
+  results?: Record<
+    string,
+    {
+      link?: string;
+      flatrate?: TmdbProviderEntry[];
+      rent?: TmdbProviderEntry[];
+      buy?: TmdbProviderEntry[];
+    }
+  >;
+}
+
+export interface WatchProvider {
+  name: string;
+  logo_path: string | null;
+}
+export interface WatchProviders {
+  link: string | null;
+  flatrate: WatchProvider[];
+  rent: WatchProvider[];
+  buy: WatchProvider[];
+}
+
+/** Watch providers pentru un titlu, în regiunea dată (default RO). */
+export async function getWatchProviders(
+  env: Env,
+  mediaType: MediaType,
+  id: number,
+  region = TMDB_REGION,
+): Promise<WatchProviders> {
+  const data = await tmdbFetch<TmdbProvidersResponse>(env, `/${mediaType}/${id}/watch/providers`);
+  const r = data.results?.[region];
+  const map = (arr?: TmdbProviderEntry[]): WatchProvider[] =>
+    (arr ?? []).map((p) => ({ name: p.provider_name, logo_path: p.logo_path ?? null }));
+  return {
+    link: r?.link ?? null,
+    flatrate: map(r?.flatrate),
+    rent: map(r?.rent),
+    buy: map(r?.buy),
+  };
+}
+
+interface TmdbGenreList {
+  genres?: { id: number; name: string }[];
+}
+
+/** Mapare id → nume gen (ro-RO), pentru explicația match-ului. */
+export async function getGenreMap(env: Env, mediaType: MediaType): Promise<Record<number, string>> {
+  const data = await tmdbFetch<TmdbGenreList>(env, `/genre/${mediaType}/list`, { language: TMDB_LANG });
+  const map: Record<number, string> = {};
+  for (const g of data.genres ?? []) map[g.id] = g.name;
+  return map;
+}
+
 /** Detaliile unui titlu → card. Folosit ca fallback la reconstruirea deck-ului. */
 export async function getTitleCard(
   env: Env,

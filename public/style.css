@@ -266,9 +266,46 @@ select.input {
 }
 
 /* Match */
+.toggle.small {
+  padding: 0.15rem;
+}
+.toggle.small .toggle-opt {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.95rem;
+}
+
 .match-title {
   text-align: center;
   color: var(--accent);
+}
+.match-reason {
+  color: var(--fg);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.8rem;
+  font-size: 0.85rem;
+  max-width: 320px;
+}
+.providers {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  margin: 0.3rem 0 0.6rem;
+}
+.providers-label {
+  font-size: 0.8rem;
+}
+.provider img {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: block;
+}
+.provider {
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 #screen-match,
 #screen-matches {

@@ -14,7 +14,7 @@ const app = new Hono<{ Bindings: Env }>();
 // V1: permisiv. TODO: restrânge originile în prod dacă e nevoie.
 app.use("/api/*", cors());
 
-app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", phase: 4 }));
+app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", version: "v2.1" }));
 
 // Rute Faza 2
 app.route("/api/users", users);

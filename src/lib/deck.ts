@@ -5,7 +5,7 @@
 // necesară pentru match. Ordinea poate diferi/shuffle per user; contează pool-ul.
 
 import type { DeckCard, Env, MediaType, Profile, Room } from "../types";
-import { discoverTitles, getTitleCard } from "../services/tmdb";
+import { discoverTitles, getGenreMap, getTitleCard } from "../services/tmdb";
 import { mapProfile } from "./mappers";
 
 const TOP_GENRES = 3;
@@ -114,4 +114,33 @@ export async function getCardFromDeck(
   if (!cached) return null;
   const cards = JSON.parse(cached) as DeckCard[];
   return cards.find((c) => c.tmdb_id === tmdbId) ?? null;
+}
+
+/** Resetează pool-ul camerei (rooms.deck=[] + cache carduri) → se regenerează la următorul /deck. */
+export async function resetDeck(env: Env, roomId: string): Promise<void> {
+  await env.DB.prepare("UPDATE rooms SET deck = '[]' WHERE id = ?").bind(roomId).run();
+  await env.TMDB_CACHE.delete(DECK_CARDS_KV_PREFIX + roomId);
+}
+
+/**
+ * Explicație „de ce a ieșit match": gusturi comune (genuri) + rating.
+ * Transparență pe algoritm — diferențiatorul din brief.
+ */
+export async function buildMatchReason(env: Env, room: Room, card: DeckCard | null): Promise<string> {
+  const parts: string[] = [];
+  if (card && card.genres.length > 0) {
+    const [profileA, profileB] = await Promise.all([
+      loadProfile(env, room.user_a_id),
+      loadProfile(env, room.user_b_id),
+    ]);
+    const top = combineTopGenres(profileA, profileB);
+    const shared = card.genres.filter((g) => top.includes(g));
+    if (shared.length > 0) {
+      const gmap = await getGenreMap(env, room.media_type);
+      const names = shared.map((id) => gmap[id]).filter(Boolean);
+      if (names.length > 0) parts.push("gusturi comune: " + names.join(", "));
+    }
+  }
+  if (card?.vote_average) parts.push(`rating ${card.vote_average.toFixed(1)}`);
+  return parts.join(" · ") || "amândoi ați dat like";
 }
