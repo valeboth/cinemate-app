@@ -9,11 +9,14 @@ export { Room } from "./durable-objects/room";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", version: "v2.2" }));
+app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", version: "v2.3" }));
 
 app.route("/api/users", users);
 app.route("/api/profile", profile);
 app.route("/api/rooms", rooms);
+
+// Invite link path: serve the SPA shell so ?code= is picked up by the frontend.
+app.get("/join", (c) => c.env.ASSETS.fetch(new Request(new URL("/index.html", c.req.url))));
 
 // TODO(V3): Letterboxd CSV import, Plex check, auto-queue Radarr/Sonarr, group mode.
 

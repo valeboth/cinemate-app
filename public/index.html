@@ -81,12 +81,19 @@
             <span id="ws-status" class="ws-status" title="live connection">●</span>
           </div>
 
+          <div class="invite-bar hidden" id="invite-bar">
+            <span class="muted">Invite a friend:</span>
+            <button id="copy-code-btn" class="chip-btn">Copy code</button>
+            <button id="copy-link-btn" class="chip-btn">Copy link</button>
+          </div>
+
           <div id="deck-area" class="deck-area">
             <div id="card" class="movie-card hidden">
               <div class="poster" id="card-poster"></div>
               <div class="card-info">
                 <h3 id="card-title"></h3>
                 <p id="card-meta" class="muted"></p>
+                <p id="card-rating" class="rating-row"></p>
                 <p id="card-overview" class="overview"></p>
               </div>
             </div>
@@ -107,6 +114,7 @@
           <div id="match-poster" class="poster big"></div>
           <h3 id="match-name"></h3>
           <p id="match-meta" class="muted"></p>
+          <p id="match-rating" class="rating-row"></p>
           <p id="match-reason" class="match-reason"></p>
           <div id="match-providers" class="providers"></div>
           <a id="match-tmdb-link" class="btn-link" target="_blank" rel="noopener noreferrer">View on TMDb ↗</a>

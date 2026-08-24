@@ -42,6 +42,7 @@ const state = {
   deck: [],
   deckIndex: 0,
   ws: null,
+  pendingCode: null, // invite code from ?code= to auto-join after onboarding
 };
 
 // ── API helper ──────────────────────────────────────────────────────────────
@@ -146,7 +147,13 @@ async function handleOnboarding() {
     });
 
     updateUserBadge();
-    showScreen("screen-lobby");
+    if (state.pendingCode) {
+      $("join-code-input").value = state.pendingCode;
+      state.pendingCode = null;
+      handleJoinRoom();
+    } else {
+      showScreen("screen-lobby");
+    }
   } catch (e) {
     err.textContent = "Error: " + e.message;
   }
@@ -212,9 +219,22 @@ async function handleJoinRoom() {
 async function enterSwipe() {
   showScreen("screen-swipe");
   $("room-code-label").textContent = state.soloMode ? "SOLO" : state.room.join_code;
+  $("invite-bar").classList.toggle("hidden", state.soloMode);
   syncMediaToggle();
   connectWs();
   await loadDeck();
+}
+
+function inviteLink() {
+  return `${location.origin}/join?code=${state.room.join_code}`;
+}
+async function copyText(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(label + " copied");
+  } catch {
+    toast("Copy failed");
+  }
 }
 
 async function loadDeck() {
@@ -223,7 +243,7 @@ async function loadDeck() {
   $("deck-loading").textContent = "Loading the deck…";
   $("deck-loading").classList.remove("hidden");
   try {
-    const res = await api(`/api/rooms/${state.room.id}/deck`);
+    const res = await api(`/api/rooms/${state.room.id}/deck?user_id=${encodeURIComponent(state.userId)}`);
     state.deck = res.cards || [];
     state.deckIndex = 0;
     $("deck-loading").classList.add("hidden");
@@ -274,6 +294,24 @@ function renderCard() {
   if (card.vote_average) bits.push("⭐ " + card.vote_average.toFixed(1));
   $("card-meta").textContent = bits.join("  ·  ");
   $("card-overview").textContent = card.overview || "(no description)";
+  renderRatings(card.tmdb_id, "card-rating");
+}
+
+// Best-effort OMDb ratings (IMDb / RT / Metacritic). Silent on failure.
+async function renderRatings(tmdbId, elId) {
+  const el = $(elId);
+  el.textContent = "";
+  try {
+    const res = await api(`/api/rooms/${state.room.id}/rating/${tmdbId}`);
+    const r = res.ratings || {};
+    const parts = [];
+    if (r.imdb_rating) parts.push(`IMDb ${r.imdb_rating}`);
+    if (r.rotten_tomatoes) parts.push(`🍅 ${r.rotten_tomatoes}`);
+    if (r.metacritic) parts.push(`MC ${r.metacritic}`);
+    el.textContent = parts.join("  ·  ");
+  } catch {
+    // best-effort — leave empty
+  }
 }
 
 async function swipe(direction) {
@@ -357,6 +395,7 @@ function showMatch(card, reason) {
   $("match-reason").textContent = reason || "";
   const media = card.media_type || state.mediaType;
   $("match-tmdb-link").href = `https://www.themoviedb.org/${media}/${card.tmdb_id}`;
+  renderRatings(card.tmdb_id, "match-rating");
   renderProviders(card.tmdb_id);
   showScreen("screen-match");
 }
@@ -471,12 +510,22 @@ function init() {
   $("view-matches-btn").onclick = showMatchesList;
   $("matches-back-btn").onclick = () => showScreen("screen-swipe");
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");
+  $("copy-code-btn").onclick = () => copyText(state.room.join_code, "Code");
+  $("copy-link-btn").onclick = () => copyText(inviteLink(), "Link");
 
-  // Known user → skip onboarding.
+  // Invite link: /join?code=ABC123 (or /?code=...) → pre-fill and auto-join.
+  const pendingCode = (new URLSearchParams(location.search).get("code") || "").trim().toUpperCase();
+
   if (state.userId && state.username) {
     updateUserBadge();
-    showScreen("screen-lobby");
+    if (pendingCode) {
+      $("join-code-input").value = pendingCode;
+      handleJoinRoom();
+    } else {
+      showScreen("screen-lobby");
+    }
   } else {
+    state.pendingCode = pendingCode || null;
     showScreen("screen-onboarding");
   }
 }

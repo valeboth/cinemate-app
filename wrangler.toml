@@ -14,6 +14,8 @@ workers_dev = false
 # matching file (e.g. /api/*) reach the Worker. No CORS, a single deploy.
 [assets]
 directory = "./public"
+# ASSETS binding: lets the Worker serve index.html for SPA paths like /join.
+binding = "ASSETS"
 
 # --- Custom domain ---
 # Requires the valegboth.win zone to be in the same Cloudflare account.

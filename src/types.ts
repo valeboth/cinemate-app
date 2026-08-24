@@ -8,8 +8,12 @@ export interface Env {
   TMDB_CACHE: KVNamespace;
   /** Durable Object namespace — live per-room state. */
   ROOM: DurableObjectNamespace;
+  /** Static assets fetcher (used to serve index.html on SPA paths like /join). */
+  ASSETS: Fetcher;
   /** Secret — the TMDb key. Never in code; comes from .dev.vars / wrangler secret. */
   TMDB_API_KEY: string;
+  /** Secret — the OMDb key (enrichment: IMDb/RT/Metacritic ratings). Best-effort. */
+  OMDB_API_KEY: string;
 }
 
 export type MediaType = "movie" | "tv";

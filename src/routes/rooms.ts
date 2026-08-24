@@ -4,7 +4,8 @@ import { genId } from "../lib/ids";
 import { uniqueJoinCode, userExists } from "../lib/db";
 import { mapRoom } from "../lib/mappers";
 import { getOrCreateDeck, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
-import { getWatchProviders } from "../services/tmdb";
+import { getWatchProviders, getImdbId } from "../services/tmdb";
+import { getOmdbRatings } from "../services/omdb";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
@@ -90,22 +91,59 @@ rooms.get("/:id", async (c) => {
   return c.json(mapRoom(row), 200);
 });
 
-// GET /api/rooms/:id/deck — shared pool from TMDb (generated once).
+// GET /api/rooms/:id/deck?user_id=... — shared pool from TMDb (generated once).
+// The stored pool never changes (both users draw from the same pool). When user_id
+// is given, already-swiped titles are excluded from what THIS user is served.
 rooms.get("/:id/deck", async (c) => {
   const id = c.req.param("id");
+  const userId = c.req.query("user_id");
   const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
     .bind(id)
     .first<Record<string, unknown>>();
   if (!row) return c.json({ error: "room_not_found" }, 404);
 
   const room = mapRoom(row);
+  // AUTH GATING (when a user is provided): must belong to the room.
+  if (userId && userId !== room.user_a_id && userId !== room.user_b_id) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
   try {
     const deck = await getOrCreateDeck(c.env, room);
-    return c.json(deck, 200);
+    let cards = deck.cards;
+    if (userId) {
+      const { results } = await c.env.DB.prepare(
+        "SELECT tmdb_id FROM swipes WHERE room_id = ? AND user_id = ?",
+      )
+        .bind(id, userId)
+        .all<{ tmdb_id: number }>();
+      const seen = new Set((results ?? []).map((r) => r.tmdb_id));
+      cards = cards.filter((card) => !seen.has(card.tmdb_id));
+    }
+    return c.json({ ...deck, cards }, 200);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return c.json({ error: "deck_generation_failed", detail }, 502);
   }
+});
+
+// GET /api/rooms/:id/rating/:tmdbId — OMDb ratings (IMDb/RT/Metacritic). Best-effort.
+rooms.get("/:id/rating/:tmdbId", async (c) => {
+  const id = c.req.param("id");
+  const tmdbId = Number(c.req.param("tmdbId"));
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: "tmdb_id_invalid" }, 400);
+
+  const row = await c.env.DB.prepare("SELECT media_type FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const mediaType = String(row.media_type) === "tv" ? "tv" : "movie";
+
+  const imdbId = await getImdbId(c.env, mediaType, tmdbId);
+  const ratings = imdbId
+    ? await getOmdbRatings(c.env, imdbId)
+    : { imdb_rating: null, imdb_votes: null, rotten_tomatoes: null, metacritic: null };
+  return c.json({ tmdb_id: tmdbId, imdb_id: imdbId, ratings }, 200);
 });
 
 // POST /api/rooms/:id/swipe — record a swipe + detect a match (D1) + broadcast (DO).
