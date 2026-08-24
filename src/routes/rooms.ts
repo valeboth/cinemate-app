@@ -8,7 +8,7 @@ import { getWatchProviders } from "../services/tmdb";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
-// POST /api/rooms — creează cameră + cod de invite. Userul devine user_a.
+// POST /api/rooms — create a room + invite code. The user becomes user_a.
 // Body: { user_id, media_type?='movie', platform_filter?, solo?=false }
 rooms.post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -28,7 +28,7 @@ rooms.post("/", async (c) => {
 
   const id = genId();
   const joinCode = await uniqueJoinCode(c.env.DB);
-  // Solo = fără user_b, activă imediat. Altfel așteaptă al doilea user.
+  // Solo = no user_b, active immediately. Otherwise wait for the second user.
   const status = solo ? "active" : "waiting";
 
   const row = await c.env.DB.prepare(
@@ -43,7 +43,7 @@ rooms.post("/", async (c) => {
   return c.json(mapRoom(row), 201);
 });
 
-// POST /api/rooms/join — al doilea user intră cu codul → devine user_b, camera active.
+// POST /api/rooms/join — second user joins with the code → becomes user_b, room active.
 // Body: { user_id, join_code }
 rooms.post("/join", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -64,9 +64,9 @@ rooms.post("/join", async (c) => {
 
   const room = mapRoom(existing);
   if (room.status === "closed") return c.json({ error: "room_closed" }, 409);
-  // Creatorul „intră" în propria cameră → doar întoarcem camera.
+  // The creator "joins" their own room → just return the room.
   if (room.user_a_id === userId) return c.json(room, 200);
-  // Cameră deja plină cu alt user.
+  // Room already full with another user.
   if (room.user_b_id && room.user_b_id !== userId) {
     return c.json({ error: "room_full" }, 409);
   }
@@ -80,7 +80,7 @@ rooms.post("/join", async (c) => {
   return c.json(mapRoom(updated), 200);
 });
 
-// GET /api/rooms/:id — citește starea camerei.
+// GET /api/rooms/:id — read room state.
 rooms.get("/:id", async (c) => {
   const id = c.req.param("id");
   const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
@@ -90,7 +90,7 @@ rooms.get("/:id", async (c) => {
   return c.json(mapRoom(row), 200);
 });
 
-// GET /api/rooms/:id/deck — pool comun din TMDb (generat o singură dată).
+// GET /api/rooms/:id/deck — shared pool from TMDb (generated once).
 rooms.get("/:id/deck", async (c) => {
   const id = c.req.param("id");
   const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
@@ -108,7 +108,7 @@ rooms.get("/:id/deck", async (c) => {
   }
 });
 
-// POST /api/rooms/:id/swipe — înregistrează swipe + detectează match (D1) + broadcast (DO).
+// POST /api/rooms/:id/swipe — record a swipe + detect a match (D1) + broadcast (DO).
 // Body: { user_id, tmdb_id, direction: 'like'|'dislike' }
 rooms.post("/:id/swipe", async (c) => {
   const id = c.req.param("id");
@@ -129,13 +129,13 @@ rooms.post("/:id/swipe", async (c) => {
   if (!row) return c.json({ error: "room_not_found" }, 404);
   const room = mapRoom(row);
 
-  // AUTH GATING (HARD): user-ul trebuie să aparțină camerei.
+  // AUTH GATING (HARD): the user must belong to the room.
   if (userId !== room.user_a_id && userId !== room.user_b_id) {
     return c.json({ error: "forbidden" }, 403);
   }
   if (room.status === "closed") return c.json({ error: "room_closed" }, 409);
 
-  // Persistă swipe-ul (idempotent: re-swipe pe același titlu actualizează direcția).
+  // Persist the swipe (idempotent: re-swiping a title updates the direction).
   await c.env.DB.prepare(
     `INSERT INTO swipes (room_id, user_id, tmdb_id, media_type, direction)
      VALUES (?, ?, ?, ?, ?)
@@ -151,7 +151,7 @@ rooms.post("/:id/swipe", async (c) => {
 
   if (direction === "like") {
     const isSolo = room.user_b_id === null;
-    // Solo → orice like = match. Pereche → match dacă și celălalt a dat like.
+    // Solo → any like is a match. Pair → match if the other user also liked it.
     let bothLiked = isSolo;
     if (!isSolo) {
       const other = await c.env.DB.prepare(
@@ -174,7 +174,7 @@ rooms.post("/:id/swipe", async (c) => {
         .run();
       isNewMatch = (res.meta.changes ?? 0) > 0;
 
-      // Broadcast live către clienții WS DOAR la match nou.
+      // Broadcast live to WS clients ONLY on a new match.
       if (isNewMatch) {
         const card = await getCardFromDeck(c.env, room.id, tmdbId);
         matchReason = await buildMatchReason(c.env, room, card);
@@ -187,11 +187,9 @@ rooms.post("/:id/swipe", async (c) => {
         });
         const stub = c.env.ROOM.get(c.env.ROOM.idFromName(room.id));
         try {
-          await stub.fetch(
-            new Request("https://do/broadcast", { method: "POST", body: event }),
-          );
+          await stub.fetch(new Request("https://do/broadcast", { method: "POST", body: event }));
         } catch {
-          // broadcast best-effort; match-ul e deja persistat în D1
+          // broadcast is best-effort; the match is already persisted in D1
         }
       }
     }
@@ -203,7 +201,7 @@ rooms.post("/:id/swipe", async (c) => {
   );
 });
 
-// GET /api/rooms/:id/matches — lista de match-uri (cu card din cache, dacă există).
+// GET /api/rooms/:id/matches — list of matches (with card from cache when available).
 rooms.get("/:id/matches", async (c) => {
   const id = c.req.param("id");
   const room = await c.env.DB.prepare("SELECT id FROM rooms WHERE id = ?").bind(id).first();
@@ -227,7 +225,7 @@ rooms.get("/:id/matches", async (c) => {
   return c.json({ room_id: id, matches }, 200);
 });
 
-// GET /api/rooms/:id/ws — conexiune WebSocket live (forward către Durable Object).
+// GET /api/rooms/:id/ws — live WebSocket connection (forwarded to the Durable Object).
 rooms.get("/:id/ws", async (c) => {
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket") {
     return c.json({ error: "expected_websocket_upgrade" }, 426);
@@ -237,7 +235,7 @@ rooms.get("/:id/ws", async (c) => {
   return stub.fetch(c.req.raw);
 });
 
-// PATCH /api/rooms/:id — toggle film/serial live: schimbă media_type + resetează pool-ul.
+// PATCH /api/rooms/:id — live movie/tv toggle: change media_type + reset the pool.
 // Body: { user_id, media_type }
 rooms.patch("/:id", async (c) => {
   const id = c.req.param("id");
@@ -255,7 +253,7 @@ rooms.patch("/:id", async (c) => {
   if (!row) return c.json({ error: "room_not_found" }, 404);
   const room = mapRoom(row);
 
-  // AUTH GATING: doar membrii camerei pot schimba tipul.
+  // AUTH GATING: only room members can change the type.
   if (userId !== room.user_a_id && userId !== room.user_b_id) {
     return c.json({ error: "forbidden" }, 403);
   }
@@ -267,9 +265,9 @@ rooms.patch("/:id", async (c) => {
   await c.env.DB.prepare("UPDATE rooms SET media_type = ? WHERE id = ?")
     .bind(mediaType, room.id)
     .run();
-  await resetDeck(c.env, room.id); // pool-ul se regenerează la următorul /deck
+  await resetDeck(c.env, room.id); // pool regenerates on the next /deck
 
-  // Anunță live celălalt client să reîncarce deck-ul.
+  // Notify the other client live to reload the deck.
   const stub = c.env.ROOM.get(c.env.ROOM.idFromName(room.id));
   try {
     await stub.fetch(
@@ -285,7 +283,7 @@ rooms.patch("/:id", async (c) => {
   return c.json({ ...room, media_type: mediaType, deck: [] }, 200);
 });
 
-// GET /api/rooms/:id/providers/:tmdbId — unde poate fi văzut titlul (RO).
+// GET /api/rooms/:id/providers/:tmdbId — where a title can be watched (RO).
 rooms.get("/:id/providers/:tmdbId", async (c) => {
   const id = c.req.param("id");
   const tmdbId = Number(c.req.param("tmdbId"));

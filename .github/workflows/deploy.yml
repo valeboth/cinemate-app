@@ -4,10 +4,10 @@ on:
   push:
     branches: [main]
 
-# Necesită secrete de repo (Settings → Secrets and variables → Actions):
-#   CLOUDFLARE_API_TOKEN  — token cu permisiuni Workers + D1
-#   CLOUDFLARE_ACCOUNT_ID — ID-ul contului Cloudflare
-# Secretul TMDB_API_KEY se pune separat pe Worker: `wrangler secret put TMDB_API_KEY`.
+# Requires repo secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN  — token with Workers + D1 permissions
+#   CLOUDFLARE_ACCOUNT_ID — Cloudflare account ID
+# The TMDB_API_KEY secret is set separately on the Worker: `wrangler secret put TMDB_API_KEY`.
 
 jobs:
   deploy:
@@ -23,7 +23,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      # Un singur deploy: urcă Worker-ul + frontend-ul static (Workers Static Assets).
+      # A single deploy: ships the Worker + the static frontend (Workers Static Assets).
       - name: Deploy Worker + Assets
         run: npx wrangler deploy
         env:

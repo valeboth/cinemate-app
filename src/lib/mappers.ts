@@ -1,4 +1,4 @@
-// Mapare rânduri D1 (Record<string, unknown>) → tipuri aplicație.
+// Map D1 rows (Record<string, unknown>) → application types.
 
 import type { MediaType, Profile, Room, RoomStatus } from "../types";
 

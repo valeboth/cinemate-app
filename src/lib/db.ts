@@ -1,4 +1,4 @@
-// Helperi mici pentru D1.
+// Small D1 helpers.
 
 import { genJoinCode } from "./ids";
 
@@ -7,7 +7,7 @@ export async function userExists(db: D1Database, id: string): Promise<boolean> {
   return row != null;
 }
 
-/** Generează un join_code care nu există deja în rooms. */
+/** Generate a join_code that does not already exist in rooms. */
 export async function uniqueJoinCode(db: D1Database): Promise<string> {
   for (let attempt = 0; attempt < 6; attempt++) {
     const code = genJoinCode();

@@ -1,16 +1,20 @@
-// Integrare TMDb + cache KV.
-// HARD: cheia TMDb vine DOAR din env (secret), niciodată din cod sau frontend.
-// Frontend-ul lovește Worker-ul, Worker-ul lovește TMDb.
-// Auth: detectăm automat v4 (Read Access Token = JWT „eyJ...") vs v3 (api_key).
+// TMDb integration + KV cache.
+// HARD: the TMDb key comes ONLY from env (secret), never from code or the frontend.
+// The frontend calls the Worker, the Worker calls TMDb.
+// Auth is auto-detected: v4 (Read Access Token = JWT "eyJ...") vs v3 (api_key).
 
 import type { DeckCard, Env, MediaType } from "../types";
 
 export const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 export const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
-const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24h pentru răspunsurile TMDb
-const TMDB_REGION = "RO";
-const TMDB_LANG = "ro-RO";
+const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24h for TMDb responses
+const TMDB_REGION = "RO"; // watch providers + release region
+const TMDB_LANG = "en-US";
+
+// Era thresholds for the "recent / classic" quiz preference.
+const RECENT_FROM = "2018-01-01";
+const CLASSIC_UNTIL = "2005-12-31";
 
 interface TmdbDiscoverResult {
   id: number;
@@ -46,7 +50,7 @@ function isV4Token(key: string): boolean {
   return key.startsWith("eyJ"); // JWT
 }
 
-/** Fetch TMDb cu cache KV. Cheia de cache exclude api_key. */
+/** Fetch TMDb with a KV cache in front. The cache key excludes api_key. */
 export async function tmdbFetch<T>(
   env: Env,
   path: string,
@@ -60,7 +64,6 @@ export async function tmdbFetch<T>(
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   if (!v4) url.searchParams.set("api_key", key);
 
-  // Cheia de cache: path + params sortate, FĂRĂ api_key.
   const cacheParams = [...url.searchParams.entries()]
     .filter(([k]) => k !== "api_key")
     .sort(([a], [b]) => a.localeCompare(b))
@@ -85,8 +88,7 @@ export async function tmdbFetch<T>(
   return data;
 }
 
-// Provideri de streaming pentru RO (watch_region=RO). Best-effort.
-// TODO: validare per regiune via /watch/providers/{movie|tv}?watch_region=RO.
+// Streaming providers for the RO region (watch_region=RO). Best-effort.
 const PROVIDER_IDS: Record<string, number> = {
   netflix: 8,
   prime: 119,
@@ -121,18 +123,22 @@ function discoverResultToCard(r: TmdbDiscoverResult, mediaType: MediaType): Deck
   };
 }
 
+export type Era = "recent" | "classic";
+
 export interface DiscoverOptions {
   mediaType: MediaType;
   genreIds?: number[];
   platform?: string | null;
+  era?: Era | null;
   pages?: number;
 }
 
-/** discover /discover/{movie|tv} pe RO; întoarce carduri deduplicate. */
+/** discover /discover/{movie|tv} for RO; returns deduplicated cards. */
 export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<DeckCard[]> {
   const pages = Math.max(1, Math.min(opts.pages ?? 2, 5));
   const cards: DeckCard[] = [];
   const seen = new Set<number>();
+  const dateField = opts.mediaType === "movie" ? "primary_release_date" : "first_air_date";
 
   for (let page = 1; page <= pages; page++) {
     const params: Record<string, string> = {
@@ -144,8 +150,11 @@ export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<D
       page: String(page),
     };
     if (opts.genreIds && opts.genreIds.length > 0) {
-      params.with_genres = opts.genreIds.join("|"); // OR între genuri
+      params.with_genres = opts.genreIds.join("|"); // OR across genres
     }
+    if (opts.era === "recent") params[`${dateField}.gte`] = RECENT_FROM;
+    if (opts.era === "classic") params[`${dateField}.lte`] = CLASSIC_UNTIL;
+
     const providerId = opts.platform ? PROVIDER_IDS[opts.platform.toLowerCase()] : undefined;
     if (providerId) {
       params.with_watch_providers = String(providerId);
@@ -164,6 +173,29 @@ export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<D
     if (page >= (data.total_pages ?? 1)) break;
   }
   return cards;
+}
+
+/** Title details → card. Used as a fallback when rebuilding a deck or a watchlist. */
+export async function getTitleCard(
+  env: Env,
+  mediaType: MediaType,
+  id: number,
+): Promise<DeckCard | null> {
+  try {
+    const d = await tmdbFetch<TmdbDetail>(env, `/${mediaType}/${id}`, { language: TMDB_LANG });
+    return {
+      tmdb_id: d.id,
+      media_type: mediaType,
+      title: (mediaType === "movie" ? d.title : d.name) ?? "",
+      overview: d.overview ?? "",
+      poster_path: d.poster_path ?? null,
+      genres: (d.genres ?? []).map((g) => g.id),
+      release_year: dateToYear(mediaType === "movie" ? d.release_date : d.first_air_date),
+      vote_average: typeof d.vote_average === "number" ? d.vote_average : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 interface TmdbProviderEntry {
@@ -194,7 +226,7 @@ export interface WatchProviders {
   buy: WatchProvider[];
 }
 
-/** Watch providers pentru un titlu, în regiunea dată (default RO). */
+/** Watch providers for a title, in the given region (default RO). */
 export async function getWatchProviders(
   env: Env,
   mediaType: MediaType,
@@ -217,33 +249,10 @@ interface TmdbGenreList {
   genres?: { id: number; name: string }[];
 }
 
-/** Mapare id → nume gen (ro-RO), pentru explicația match-ului. */
+/** id → genre name map, used for the match explanation. */
 export async function getGenreMap(env: Env, mediaType: MediaType): Promise<Record<number, string>> {
   const data = await tmdbFetch<TmdbGenreList>(env, `/genre/${mediaType}/list`, { language: TMDB_LANG });
   const map: Record<number, string> = {};
   for (const g of data.genres ?? []) map[g.id] = g.name;
   return map;
-}
-
-/** Detaliile unui titlu → card. Folosit ca fallback la reconstruirea deck-ului. */
-export async function getTitleCard(
-  env: Env,
-  mediaType: MediaType,
-  id: number,
-): Promise<DeckCard | null> {
-  try {
-    const d = await tmdbFetch<TmdbDetail>(env, `/${mediaType}/${id}`, { language: TMDB_LANG });
-    return {
-      tmdb_id: d.id,
-      media_type: mediaType,
-      title: (mediaType === "movie" ? d.title : d.name) ?? "",
-      overview: d.overview ?? "",
-      poster_path: d.poster_path ?? null,
-      genres: (d.genres ?? []).map((g) => g.id),
-      release_year: dateToYear(mediaType === "movie" ? d.release_date : d.first_air_date),
-      vote_average: typeof d.vote_average === "number" ? d.vote_average : null,
-    };
-  } catch {
-    return null;
-  }
 }

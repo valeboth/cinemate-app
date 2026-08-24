@@ -5,9 +5,8 @@ import { mapProfile } from "../lib/mappers";
 
 export const profile = new Hono<{ Bindings: Env }>();
 
-// POST /api/profile/quiz — salvează (upsert) profilul simplu de gusturi.
+// POST /api/profile/quiz — upsert the taste profile.
 // Body: { user_id, genre_scores?, era_pref?, mood_pref?, media_type_pref? }
-// TODO(V2): quiz real cu scoring propriu-zis (înlocuiește profilul default).
 profile.post("/quiz", async (c) => {
   const body = await c.req.json().catch(() => null);
   const userId = typeof body?.user_id === "string" ? body.user_id : "";
@@ -46,7 +45,7 @@ profile.post("/quiz", async (c) => {
   return c.json(mapProfile(row), 200);
 });
 
-// GET /api/profile/:userId — citește profilul (util la testare / onboarding).
+// GET /api/profile/:userId — read the profile.
 profile.get("/:userId", async (c) => {
   const userId = c.req.param("userId");
   const row = await c.env.DB.prepare("SELECT * FROM profiles WHERE user_id = ?")

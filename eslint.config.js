@@ -18,7 +18,7 @@ export default tseslint.config(
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
-      // catch gol e ok pentru WebSocket-uri care s-au deconectat.
+      // empty catch is fine for disconnected WebSockets.
       "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },

@@ -132,10 +132,18 @@ select.input {
   cursor: pointer;
   font-size: 0.9rem;
 }
-.chip.active {
+.chip.like {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.chip.love {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+.hint {
+  font-size: 0.8rem;
+  opacity: 0.8;
 }
 
 .card-box {

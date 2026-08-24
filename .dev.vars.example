@@ -1,6 +1,6 @@
-# Copiază acest fișier în `.dev.vars` (gitignored) și completează cheia reală.
+# Copy this file to `.dev.vars` (gitignored) and fill in the real key.
 #   cp .dev.vars.example .dev.vars
 #
-# Cheia TMDb o obții gratuit de la https://www.themoviedb.org/settings/api
-# Poți folosi fie API Key (v3 auth), fie Read Access Token (v4). Vezi src/services/tmdb.ts.
-TMDB_API_KEY="pune_cheia_ta_aici"
+# Get a free TMDb key at https://www.themoviedb.org/settings/api
+# Either an API Key (v3 auth) or a Read Access Token (v4) works. See src/services/tmdb.ts.
+TMDB_API_KEY="your_key_here"
