@@ -74,8 +74,8 @@ personal).
       PLAN.md. *(PR #1, mergeuit)*
 - [x] **Faza 1 — D1.** `schema.sql` + migrare. *(PR #2, mergeuit)*
 - [x] **Faza 2 — Worker + rute Hono.** users, profil simplu, rooms create/join. *(PR #3, mergeuit)*
-- [ ] **Faza 3 — TMDb service.** cache KV + generarea pool-ului de deck per cameră. *(în lucru / PR curent)*
-- [ ] **Faza 4 — Durable Object.** stare live, WebSocket hibernation, detecție match.
+- [x] **Faza 3 — TMDb service.** cache KV + generarea pool-ului de deck per cameră. *(PR #4, mergeuit)*
+- [ ] **Faza 4 — Durable Object.** stare live, WebSocket hibernation, detecție match. *(în lucru / PR curent)*
 - [ ] **Faza 5 — Frontend.** swipe pe Pages + match screen + solo mode + toggle
       film/serial.
 

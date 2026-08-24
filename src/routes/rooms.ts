@@ -3,7 +3,7 @@ import type { Env } from "../types";
 import { genId } from "../lib/ids";
 import { uniqueJoinCode, userExists } from "../lib/db";
 import { mapRoom } from "../lib/mappers";
-import { getOrCreateDeck } from "../lib/deck";
+import { getOrCreateDeck, getCardFromDeck } from "../lib/deck";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
@@ -107,5 +107,127 @@ rooms.get("/:id/deck", async (c) => {
   }
 });
 
-// TODO(Faza 4): POST /api/rooms/:id/swipe, GET /api/rooms/:id/matches, GET /api/rooms/:id/ws.
+// POST /api/rooms/:id/swipe — înregistrează swipe + detectează match (D1) + broadcast (DO).
+// Body: { user_id, tmdb_id, direction: 'like'|'dislike' }
+rooms.post("/:id/swipe", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  const userId = typeof body?.user_id === "string" ? body.user_id : "";
+  const tmdbId = Number(body?.tmdb_id);
+  const direction = body?.direction;
+
+  if (!userId) return c.json({ error: "user_id_required" }, 400);
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: "tmdb_id_invalid" }, 400);
+  if (direction !== "like" && direction !== "dislike") {
+    return c.json({ error: "direction_invalid" }, 400);
+  }
+
+  const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const room = mapRoom(row);
+
+  // AUTH GATING (HARD): user-ul trebuie să aparțină camerei.
+  if (userId !== room.user_a_id && userId !== room.user_b_id) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  if (room.status === "closed") return c.json({ error: "room_closed" }, 409);
+
+  // Persistă swipe-ul (idempotent: re-swipe pe același titlu actualizează direcția).
+  await c.env.DB.prepare(
+    `INSERT INTO swipes (room_id, user_id, tmdb_id, media_type, direction)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(room_id, user_id, tmdb_id) DO UPDATE SET
+       direction = excluded.direction, created_at = datetime('now')`,
+  )
+    .bind(room.id, userId, tmdbId, room.media_type, direction)
+    .run();
+
+  let matched = false;
+  let isNewMatch = false;
+
+  if (direction === "like") {
+    const isSolo = room.user_b_id === null;
+    // Solo → orice like = match. Pereche → match dacă și celălalt a dat like.
+    let bothLiked = isSolo;
+    if (!isSolo) {
+      const other = await c.env.DB.prepare(
+        `SELECT 1 AS ok FROM swipes
+         WHERE room_id = ? AND tmdb_id = ? AND direction = 'like' AND user_id <> ?
+         LIMIT 1`,
+      )
+        .bind(room.id, tmdbId, userId)
+        .first();
+      bothLiked = other != null;
+    }
+
+    if (bothLiked) {
+      matched = true;
+      const res = await c.env.DB.prepare(
+        `INSERT INTO matches (room_id, tmdb_id, media_type) VALUES (?, ?, ?)
+         ON CONFLICT(room_id, tmdb_id) DO NOTHING`,
+      )
+        .bind(room.id, tmdbId, room.media_type)
+        .run();
+      isNewMatch = (res.meta.changes ?? 0) > 0;
+
+      // Broadcast live către clienții WS DOAR la match nou.
+      if (isNewMatch) {
+        const card = await getCardFromDeck(c.env, room.id, tmdbId);
+        const event = JSON.stringify({
+          type: "match",
+          tmdb_id: tmdbId,
+          media_type: room.media_type,
+          card,
+        });
+        const stub = c.env.ROOM.get(c.env.ROOM.idFromName(room.id));
+        try {
+          await stub.fetch(
+            new Request("https://do/broadcast", { method: "POST", body: event }),
+          );
+        } catch {
+          // broadcast best-effort; match-ul e deja persistat în D1
+        }
+      }
+    }
+  }
+
+  return c.json({ ok: true, matched, is_new_match: isNewMatch, tmdb_id: tmdbId, direction }, 200);
+});
+
+// GET /api/rooms/:id/matches — lista de match-uri (cu card din cache, dacă există).
+rooms.get("/:id/matches", async (c) => {
+  const id = c.req.param("id");
+  const room = await c.env.DB.prepare("SELECT id FROM rooms WHERE id = ?").bind(id).first();
+  if (!room) return c.json({ error: "room_not_found" }, 404);
+
+  const { results } = await c.env.DB.prepare(
+    "SELECT tmdb_id, media_type, matched_at FROM matches WHERE room_id = ? ORDER BY matched_at DESC",
+  )
+    .bind(id)
+    .all<{ tmdb_id: number; media_type: string; matched_at: string }>();
+
+  const matches = await Promise.all(
+    (results ?? []).map(async (m) => ({
+      tmdb_id: m.tmdb_id,
+      media_type: m.media_type,
+      matched_at: m.matched_at,
+      card: await getCardFromDeck(c.env, id, m.tmdb_id),
+    })),
+  );
+
+  return c.json({ room_id: id, matches }, 200);
+});
+
+// GET /api/rooms/:id/ws — conexiune WebSocket live (forward către Durable Object).
+rooms.get("/:id/ws", async (c) => {
+  if (c.req.header("Upgrade")?.toLowerCase() !== "websocket") {
+    return c.json({ error: "expected_websocket_upgrade" }, 426);
+  }
+  const id = c.req.param("id");
+  const stub = c.env.ROOM.get(c.env.ROOM.idFromName(id));
+  return stub.fetch(c.req.raw);
+});
+
 // TODO(V2): la toggle film/serial, resetează rooms.deck (=[]) ca pool-ul să se regenereze.

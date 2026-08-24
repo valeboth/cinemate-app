@@ -18,6 +18,8 @@ export default tseslint.config(
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      // catch gol e ok pentru WebSocket-uri care s-au deconectat.
+      "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },
 );
