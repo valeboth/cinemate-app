@@ -3,6 +3,7 @@ import type { Env } from "../types";
 import { genId } from "../lib/ids";
 import { uniqueJoinCode, userExists } from "../lib/db";
 import { mapRoom } from "../lib/mappers";
+import { getOrCreateDeck } from "../lib/deck";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
@@ -88,5 +89,23 @@ rooms.get("/:id", async (c) => {
   return c.json(mapRoom(row), 200);
 });
 
-// TODO(Faza 3): GET /api/rooms/:id/deck (pool comun din TMDb).
+// GET /api/rooms/:id/deck — pool comun din TMDb (generat o singură dată).
+rooms.get("/:id/deck", async (c) => {
+  const id = c.req.param("id");
+  const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+
+  const room = mapRoom(row);
+  try {
+    const deck = await getOrCreateDeck(c.env, room);
+    return c.json(deck, 200);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return c.json({ error: "deck_generation_failed", detail }, 502);
+  }
+});
+
 // TODO(Faza 4): POST /api/rooms/:id/swipe, GET /api/rooms/:id/matches, GET /api/rooms/:id/ws.
+// TODO(V2): la toggle film/serial, resetează rooms.deck (=[]) ca pool-ul să se regenereze.

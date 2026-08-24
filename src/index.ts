@@ -14,14 +14,13 @@ const app = new Hono<{ Bindings: Env }>();
 // V1: permisiv. TODO: restrânge originile în prod dacă e nevoie.
 app.use("/api/*", cors());
 
-app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", phase: 2 }));
+app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", phase: 3 }));
 
 // Rute Faza 2
 app.route("/api/users", users);
 app.route("/api/profile", profile);
 app.route("/api/rooms", rooms);
 
-// Faza 3: GET  /api/rooms/:id/deck
 // Faza 4: POST /api/rooms/:id/swipe, GET /api/rooms/:id/matches, GET /api/rooms/:id/ws
 // TODO(V2/V3): import CSV Letterboxd, Plex-check, auto-queue Radarr/Sonarr, mod grup.
 
