@@ -245,6 +245,20 @@ export async function getWatchProviders(
   };
 }
 
+interface TmdbExternalIds {
+  imdb_id?: string | null;
+}
+
+/** IMDb id for a title (works for movie and tv), used to query OMDb. */
+export async function getImdbId(env: Env, mediaType: MediaType, id: number): Promise<string | null> {
+  try {
+    const d = await tmdbFetch<TmdbExternalIds>(env, `/${mediaType}/${id}/external_ids`);
+    return d.imdb_id || null;
+  } catch {
+    return null;
+  }
+}
+
 interface TmdbGenreList {
   genres?: { id: number; name: string }[];
 }
