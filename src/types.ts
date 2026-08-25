@@ -26,22 +26,23 @@ export interface User {
   created_at: string;
 }
 
-export type Popularity = "gems" | "blockbusters";
+export interface SeedTitle {
+  tmdb_id: number;
+  media_type: MediaType;
+}
 
-/** Extra quiz answers stored as JSON in profiles.quiz_prefs. */
-export interface QuizPrefs {
-  min_rating?: number; // e.g. 7 → only titles with vote_average >= 7
-  popularity?: Popularity;
+/** Quiz preferences stored as JSON in profiles.prefs. Each is optional (empty = no filter). */
+export interface ProfilePrefs {
+  avoid_genres?: number[]; // TMDb genre ids → without_genres
+  periods?: string[]; // interval keys, see PERIOD_RANGES in services/tmdb.ts
+  seeds?: SeedTitle[]; // liked titles → recommendations (added in a later step)
 }
 
 /** Taste profile. genre_scores is JSON: { [genreId]: score 0..1 }. */
 export interface Profile {
   user_id: string;
   genre_scores: Record<string, number>;
-  era_pref: string | null;
-  mood_pref: string | null;
-  media_type_pref: MediaType | null;
-  quiz_prefs: QuizPrefs;
+  prefs: ProfilePrefs;
 }
 
 export interface Room {

@@ -12,9 +12,20 @@ const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24h for TMDb responses
 const TMDB_REGION = "RO"; // watch providers + release region
 const TMDB_LANG = "en-US";
 
-// Era thresholds for the "recent / classic" quiz preference.
-const RECENT_FROM = "2018-01-01";
-const CLASSIC_UNTIL = "2005-12-31";
+// Predefined period intervals → date ranges (used by the "period" quiz field).
+// Keys must match the frontend chips.
+const CURRENT_YEAR = new Date().getFullYear();
+export const PERIOD_RANGES: Record<string, { gte?: string; lte?: string }> = {
+  pre1980: { lte: "1979-12-31" },
+  "1980s": { gte: "1980-01-01", lte: "1989-12-31" },
+  "1990s": { gte: "1990-01-01", lte: "1999-12-31" },
+  "2000-2005": { gte: "2000-01-01", lte: "2005-12-31" },
+  "2005-2010": { gte: "2005-01-01", lte: "2010-12-31" },
+  "2010-2015": { gte: "2010-01-01", lte: "2015-12-31" },
+  "2015-2020": { gte: "2015-01-01", lte: "2020-12-31" },
+  "2020-2023": { gte: "2020-01-01", lte: "2023-12-31" },
+  thisyear: { gte: `${CURRENT_YEAR}-01-01` },
+};
 
 interface TmdbDiscoverResult {
   id: number;
@@ -123,16 +134,13 @@ function discoverResultToCard(r: TmdbDiscoverResult, mediaType: MediaType): Deck
   };
 }
 
-export type Era = "recent" | "classic";
-export type Popularity = "gems" | "blockbusters";
-
 export interface DiscoverOptions {
   mediaType: MediaType;
   genreIds?: number[];
+  avoidGenres?: number[];
   platform?: string | null;
-  era?: Era | null;
-  minRating?: number | null;
-  popularity?: Popularity | null;
+  dateGte?: string | null; // e.g. "1990-01-01"
+  dateLte?: string | null; // e.g. "1999-12-31"
   pages?: number;
 }
 
@@ -143,28 +151,23 @@ export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<D
   const seen = new Set<number>();
   const dateField = opts.mediaType === "movie" ? "primary_release_date" : "first_air_date";
 
-  // Popularity preference: hidden gems (high rating, fewer votes) vs blockbusters.
-  const sortBy = opts.popularity === "gems" ? "vote_average.desc" : "popularity.desc";
-  const voteCountGte =
-    opts.popularity === "gems" ? "300" : opts.popularity === "blockbusters" ? "1000" : "50";
-
   for (let page = 1; page <= pages; page++) {
     const params: Record<string, string> = {
       language: TMDB_LANG,
       region: TMDB_REGION,
-      sort_by: sortBy,
+      sort_by: "popularity.desc",
       include_adult: "false",
-      "vote_count.gte": voteCountGte,
+      "vote_count.gte": "50",
       page: String(page),
     };
-    if (opts.minRating && opts.minRating > 0) {
-      params["vote_average.gte"] = String(opts.minRating);
-    }
     if (opts.genreIds && opts.genreIds.length > 0) {
-      params.with_genres = opts.genreIds.join("|"); // OR across genres
+      params.with_genres = opts.genreIds.join("|"); // OR across liked genres
     }
-    if (opts.era === "recent") params[`${dateField}.gte`] = RECENT_FROM;
-    if (opts.era === "classic") params[`${dateField}.lte`] = CLASSIC_UNTIL;
+    if (opts.avoidGenres && opts.avoidGenres.length > 0) {
+      params.without_genres = opts.avoidGenres.join(","); // exclude any of these
+    }
+    if (opts.dateGte) params[`${dateField}.gte`] = opts.dateGte;
+    if (opts.dateLte) params[`${dateField}.lte`] = opts.dateLte;
 
     const providerId = opts.platform ? PROVIDER_IDS[opts.platform.toLowerCase()] : undefined;
     if (providerId) {

@@ -1,6 +1,6 @@
 // Map D1 rows (Record<string, unknown>) → application types.
 
-import type { MediaType, Popularity, Profile, QuizPrefs, Room, RoomStatus } from "../types";
+import type { MediaType, Profile, ProfilePrefs, Room, RoomStatus, SeedTitle } from "../types";
 
 function parseJsonObject(value: unknown): Record<string, number> {
   if (typeof value !== "string") return {};
@@ -38,16 +38,27 @@ export function mapRoom(row: Record<string, unknown>): Room {
   };
 }
 
-function parseQuizPrefs(value: unknown): QuizPrefs {
+function parsePrefs(value: unknown): ProfilePrefs {
   if (typeof value !== "string") return {};
   try {
     const parsed: unknown = JSON.parse(value);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const p = parsed as Record<string, unknown>;
-    const out: QuizPrefs = {};
-    if (typeof p.min_rating === "number") out.min_rating = p.min_rating;
-    if (p.popularity === "gems" || p.popularity === "blockbusters") {
-      out.popularity = p.popularity as Popularity;
+    const out: ProfilePrefs = {};
+    if (Array.isArray(p.avoid_genres)) {
+      out.avoid_genres = p.avoid_genres.map(Number).filter((n) => Number.isFinite(n));
+    }
+    if (Array.isArray(p.periods)) {
+      out.periods = p.periods.filter((x): x is string => typeof x === "string");
+    }
+    if (Array.isArray(p.seeds)) {
+      out.seeds = p.seeds
+        .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
+        .map((s) => ({
+          tmdb_id: Number(s.tmdb_id),
+          media_type: s.media_type === "tv" ? "tv" : "movie",
+        }))
+        .filter((s): s is SeedTitle => Number.isFinite(s.tmdb_id) && s.tmdb_id > 0);
     }
     return out;
   } catch {
@@ -59,9 +70,6 @@ export function mapProfile(row: Record<string, unknown>): Profile {
   return {
     user_id: String(row.user_id),
     genre_scores: parseJsonObject(row.genre_scores),
-    era_pref: row.era_pref == null ? null : String(row.era_pref),
-    mood_pref: row.mood_pref == null ? null : String(row.mood_pref),
-    media_type_pref: row.media_type_pref == null ? null : (String(row.media_type_pref) as MediaType),
-    quiz_prefs: parseQuizPrefs(row.quiz_prefs),
+    prefs: parsePrefs(row.prefs),
   };
 }

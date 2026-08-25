@@ -14,14 +14,12 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- profiles — taste profile (1:1 with users).
 -- genre_scores: JSON, e.g. {"28": 0.8, "35": 0.6} (genreId -> score 0..1).
+-- prefs: JSON with quiz preferences, e.g.
+--   {"avoid_genres":[27,53],"periods":["1990s","2020-2023"],"seeds":[{"tmdb_id":120,"media_type":"movie"}]}
 CREATE TABLE IF NOT EXISTS profiles (
-  user_id         TEXT PRIMARY KEY,
-  genre_scores    TEXT NOT NULL DEFAULT '{}',
-  era_pref        TEXT,
-  mood_pref       TEXT,
-  media_type_pref TEXT CHECK (media_type_pref IN ('movie', 'tv')),
-  -- quiz_prefs: JSON with extra quiz answers, e.g. {"min_rating":7,"popularity":"gems"}.
-  quiz_prefs      TEXT NOT NULL DEFAULT '{}',
+  user_id      TEXT PRIMARY KEY,
+  genre_scores TEXT NOT NULL DEFAULT '{}',
+  prefs        TEXT NOT NULL DEFAULT '{}',
   FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
