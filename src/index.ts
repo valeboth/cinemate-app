@@ -9,7 +9,7 @@ export { Room } from "./durable-objects/room";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", version: "v2.3" }));
+app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", version: "v2.4" }));
 
 app.route("/api/users", users);
 app.route("/api/profile", profile);

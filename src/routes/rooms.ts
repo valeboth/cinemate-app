@@ -4,7 +4,7 @@ import { genId } from "../lib/ids";
 import { uniqueJoinCode, userExists } from "../lib/db";
 import { mapRoom } from "../lib/mappers";
 import { getOrCreateDeck, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
-import { getWatchProviders, getImdbId } from "../services/tmdb";
+import { getWatchProviders, getImdbId, getTrailerKey } from "../services/tmdb";
 import { getOmdbRatings } from "../services/omdb";
 
 export const rooms = new Hono<{ Bindings: Env }>();
@@ -340,4 +340,50 @@ rooms.get("/:id/providers/:tmdbId", async (c) => {
     const detail = e instanceof Error ? e.message : String(e);
     return c.json({ error: "providers_fetch_failed", detail }, 502);
   }
+});
+
+// DELETE /api/rooms/:id/swipe — undo the last swipe on a title (removes swipe + any match).
+// Body: { user_id, tmdb_id }
+rooms.delete("/:id/swipe", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  const userId = typeof body?.user_id === "string" ? body.user_id : "";
+  const tmdbId = Number(body?.tmdb_id);
+  if (!userId) return c.json({ error: "user_id_required" }, 400);
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: "tmdb_id_invalid" }, 400);
+
+  const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const room = mapRoom(row);
+  if (userId !== room.user_a_id && userId !== room.user_b_id) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  await c.env.DB.prepare("DELETE FROM swipes WHERE room_id = ? AND user_id = ? AND tmdb_id = ?")
+    .bind(room.id, userId, tmdbId)
+    .run();
+  // The pair no longer both-liked (or solo unsaved) → drop the match if present.
+  await c.env.DB.prepare("DELETE FROM matches WHERE room_id = ? AND tmdb_id = ?")
+    .bind(room.id, tmdbId)
+    .run();
+
+  return c.json({ ok: true, tmdb_id: tmdbId }, 200);
+});
+
+// GET /api/rooms/:id/trailer/:tmdbId — YouTube trailer key (best-effort).
+rooms.get("/:id/trailer/:tmdbId", async (c) => {
+  const id = c.req.param("id");
+  const tmdbId = Number(c.req.param("tmdbId"));
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: "tmdb_id_invalid" }, 400);
+
+  const row = await c.env.DB.prepare("SELECT media_type FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const mediaType = String(row.media_type) === "tv" ? "tv" : "movie";
+
+  const key = await getTrailerKey(c.env, mediaType, tmdbId);
+  return c.json({ tmdb_id: tmdbId, youtube_key: key }, 200);
 });
