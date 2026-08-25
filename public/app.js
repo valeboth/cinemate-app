@@ -628,16 +628,31 @@ function showMatch(card, reason) {
 
 async function addToOverseerr() {
   if (!currentMatchCard) return;
+  let pin = localStorage.getItem("cinemate_request_pin");
+  if (!pin) {
+    pin = (window.prompt("Request PIN") || "").trim();
+    if (!pin) return;
+    localStorage.setItem("cinemate_request_pin", pin);
+  }
   const btn = $("add-overseerr-btn");
   btn.disabled = true;
   try {
     await api(`/api/rooms/${state.room.id}/request`, {
       method: "POST",
-      body: JSON.stringify({ user_id: state.userId, tmdb_id: currentMatchCard.tmdb_id }),
+      body: JSON.stringify({ user_id: state.userId, tmdb_id: currentMatchCard.tmdb_id, pin }),
     });
     toast("✅ Requested in Overseerr");
   } catch (e) {
-    toast(e.message === "not_configured" ? "Overseerr not set up" : "Overseerr request failed");
+    if (e.message === "invalid_pin") {
+      localStorage.removeItem("cinemate_request_pin");
+      toast("Wrong PIN — try again");
+    } else if (e.message === "requests_disabled") {
+      toast("Requests are disabled");
+    } else if (e.message === "not_configured") {
+      toast("Overseerr not set up");
+    } else {
+      toast("Overseerr request failed");
+    }
   } finally {
     btn.disabled = false;
   }

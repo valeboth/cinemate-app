@@ -21,6 +21,8 @@ export interface Env {
   /** Secret — Cloudflare Access service token (optional; if the Overseerr hostname is behind Access). */
   CF_ACCESS_CLIENT_ID: string;
   CF_ACCESS_CLIENT_SECRET: string;
+  /** Secret — shared PIN required to request in Overseerr. If unset, requests are disabled. */
+  REQUEST_PIN: string;
 }
 
 export type MediaType = "movie" | "tv";
