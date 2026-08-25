@@ -15,3 +15,5 @@ OVERSEERR_API_KEY=""
 # Only if the Overseerr hostname is behind Cloudflare Access (Zero Trust) — service token.
 CF_ACCESS_CLIENT_ID=""
 CF_ACCESS_CLIENT_SECRET=""
+# Shared PIN required to request in Overseerr (the app is public). Unset = requests disabled.
+REQUEST_PIN=""

@@ -414,6 +414,12 @@ rooms.post("/:id/request", async (c) => {
     return c.json({ error: "forbidden" }, 403);
   }
 
+  // Overseerr requests are gated by a shared PIN (the app itself is public).
+  // If no PIN is configured, requests are disabled (closed by default).
+  if (!c.env.REQUEST_PIN) return c.json({ error: "requests_disabled" }, 403);
+  const pin = typeof body?.pin === "string" ? body.pin : "";
+  if (pin !== c.env.REQUEST_PIN) return c.json({ error: "invalid_pin" }, 403);
+
   const result = await createRequest(c.env, room.media_type, tmdbId);
   if (!result.ok) return c.json({ error: result.error ?? "request_failed" }, 502);
   return c.json({ ok: true, tmdb_id: tmdbId }, 200);
