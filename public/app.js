@@ -21,12 +21,18 @@ const GENRES = [
   { id: 9648, name: "Mystery" }, { id: 10749, name: "Romance" }, { id: 878, name: "Sci-Fi" },
   { id: 53, name: "Thriller" }, { id: 10752, name: "War" }, { id: 37, name: "Western" },
 ];
-// Vibe → implied genres (seeded with a moderate weight into genre_scores).
-const VIBE_GENRES = {
-  feelgood: [35, 10749, 10751, 12],
-  dark: [53, 80, 27, 9648],
-  mindbending: [878, 9648, 53, 14],
-};
+// Period intervals (keys must match PERIOD_RANGES on the server).
+const PERIODS = [
+  { key: "pre1980", label: "Pre-1980" },
+  { key: "1980s", label: "80s" },
+  { key: "1990s", label: "90s" },
+  { key: "2000-2005", label: "2000–05" },
+  { key: "2005-2010", label: "2005–10" },
+  { key: "2010-2015", label: "2010–15" },
+  { key: "2015-2020", label: "2015–20" },
+  { key: "2020-2023", label: "2020–23" },
+  { key: "thisyear", label: "This year" },
+];
 // Full id → name map (movie ∪ tv) for card labels.
 const GENRE_NAMES = {
   28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
@@ -44,10 +50,8 @@ const state = {
   userId: localStorage.getItem("cinemate_user_id") || null,
   username: localStorage.getItem("cinemate_username") || null,
   genreLevels: {},
-  era: "",
-  minRating: "",
-  popularity: "",
-  vibe: "",
+  avoidGenres: new Set(),
+  periods: new Set(),
   mediaType: "movie",
   room: null,
   soloMode: false,
@@ -116,22 +120,46 @@ function renderGenreChips() {
   });
 }
 
-// Generic single-choice toggle: on click, activate one option and store its value in state[key].
-function setupExclusiveToggle(containerId, dataAttr, key) {
-  document.querySelectorAll(`#${containerId} .toggle-opt`).forEach((btn) => {
-    btn.onclick = () => {
-      document.querySelectorAll(`#${containerId} .toggle-opt`).forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      state[key] = btn.dataset[dataAttr];
+// Multi-select "genres to avoid" chips (danger styling).
+function renderAvoidChips() {
+  const box = $("avoid-chips");
+  box.innerHTML = "";
+  GENRES.forEach((g) => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = g.name;
+    chip.onclick = () => {
+      if (state.avoidGenres.has(g.id)) {
+        state.avoidGenres.delete(g.id);
+        chip.classList.remove("avoid");
+      } else {
+        state.avoidGenres.add(g.id);
+        chip.classList.add("avoid");
+      }
     };
+    box.appendChild(chip);
   });
 }
 
-function setupQuizToggles() {
-  setupExclusiveToggle("era-toggle", "era", "era");
-  setupExclusiveToggle("rating-toggle", "rating", "minRating");
-  setupExclusiveToggle("popularity-toggle", "pop", "popularity");
-  setupExclusiveToggle("vibe-toggle", "vibe", "vibe");
+// Multi-select period chips.
+function renderPeriodChips() {
+  const box = $("period-chips");
+  box.innerHTML = "";
+  PERIODS.forEach((p) => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = p.label;
+    chip.onclick = () => {
+      if (state.periods.has(p.key)) {
+        state.periods.delete(p.key);
+        chip.classList.remove("love");
+      } else {
+        state.periods.add(p.key);
+        chip.classList.add("love");
+      }
+    };
+    box.appendChild(chip);
+  });
 }
 
 async function handleOnboarding() {
@@ -153,19 +181,13 @@ async function handleOnboarding() {
     for (const [id, level] of Object.entries(state.genreLevels)) {
       genreScores[id] = LEVEL_SCORE[level] || 0.6;
     }
-    // Seed vibe-implied genres with a moderate weight (without lowering explicit picks).
-    for (const gid of VIBE_GENRES[state.vibe] || []) {
-      genreScores[gid] = Math.max(genreScores[gid] || 0, 0.5);
-    }
     await api("/api/profile/quiz", {
       method: "POST",
       body: JSON.stringify({
         user_id: user.id,
         genre_scores: genreScores,
-        era_pref: state.era || null,
-        mood_pref: state.vibe || null,
-        min_rating: state.minRating ? Number(state.minRating) : undefined,
-        popularity: state.popularity || undefined,
+        avoid_genres: [...state.avoidGenres],
+        periods: [...state.periods],
       }),
     });
 
@@ -285,6 +307,20 @@ async function toggleMedia(media) {
     await loadDeck();
   } catch (e) {
     console.error("toggle media error", e);
+  }
+}
+
+// New session / fresh deck: reset the pool + clear the room's swipes (both users start fresh).
+async function newSession() {
+  try {
+    await api(`/api/rooms/${state.room.id}/new-session`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: state.userId }),
+    });
+    await loadDeck();
+    toast("Fresh deck ready");
+  } catch (e) {
+    console.error("new session error", e);
   }
 }
 
@@ -603,10 +639,8 @@ function resetData() {
   state.userId = null;
   state.username = null;
   state.genreLevels = {};
-  state.era = "";
-  state.minRating = "";
-  state.popularity = "";
-  state.vibe = "";
+  state.avoidGenres = new Set();
+  state.periods = new Set();
   state.room = null;
   state.soloMode = false;
   state.deck = [];
@@ -616,10 +650,8 @@ function resetData() {
   $("user-badge").classList.add("hidden");
   $("username-input").value = "";
   renderGenreChips();
-  // reset all quiz toggles to the first option ("Any").
-  ["era-toggle", "rating-toggle", "popularity-toggle", "vibe-toggle"].forEach((id) => {
-    document.querySelectorAll(`#${id} .toggle-opt`).forEach((b, i) => b.classList.toggle("active", i === 0));
-  });
+  renderAvoidChips();
+  renderPeriodChips();
   showScreen("screen-onboarding");
 }
 
@@ -639,7 +671,8 @@ async function copyText(text, label) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 function init() {
   renderGenreChips();
-  setupQuizToggles();
+  renderAvoidChips();
+  renderPeriodChips();
   setupMediaToggle();
   setupGestures();
 
@@ -655,6 +688,7 @@ function init() {
     b.onclick = () => toggleMedia(b.dataset.media);
   });
   $("view-matches-btn").onclick = showMatchesList;
+  $("new-session-btn").onclick = newSession;
   $("matches-back-btn").onclick = () => showScreen("screen-swipe");
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");
   $("copy-link-btn").onclick = () => copyText(inviteLink(), "Invite link");

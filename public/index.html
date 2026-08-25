@@ -23,35 +23,11 @@
           <p class="muted mt">Which genres do you like? <span class="hint">(tap once = like, twice = love)</span></p>
           <div id="genre-chips" class="chips"></div>
 
-          <p class="muted mt">Era</p>
-          <div class="toggle wrap" id="era-toggle">
-            <button class="toggle-opt active" data-era="">Any</button>
-            <button class="toggle-opt" data-era="recent">Recent</button>
-            <button class="toggle-opt" data-era="classic">Classic</button>
-          </div>
+          <p class="muted mt">Genres to avoid <span class="hint">(never shown)</span></p>
+          <div id="avoid-chips" class="chips"></div>
 
-          <p class="muted mt">Minimum rating</p>
-          <div class="toggle wrap" id="rating-toggle">
-            <button class="toggle-opt active" data-rating="">Any</button>
-            <button class="toggle-opt" data-rating="6">6+</button>
-            <button class="toggle-opt" data-rating="7">7+</button>
-            <button class="toggle-opt" data-rating="8">8+</button>
-          </div>
-
-          <p class="muted mt">Popularity</p>
-          <div class="toggle wrap" id="popularity-toggle">
-            <button class="toggle-opt active" data-pop="">Any</button>
-            <button class="toggle-opt" data-pop="gems">💎 Hidden gems</button>
-            <button class="toggle-opt" data-pop="blockbusters">🍿 Blockbusters</button>
-          </div>
-
-          <p class="muted mt">Vibe</p>
-          <div class="toggle wrap" id="vibe-toggle">
-            <button class="toggle-opt active" data-vibe="">Any</button>
-            <button class="toggle-opt" data-vibe="feelgood">😊 Feel-good</button>
-            <button class="toggle-opt" data-vibe="dark">🌑 Dark</button>
-            <button class="toggle-opt" data-vibe="mindbending">🌀 Mind-bending</button>
-          </div>
+          <p class="muted mt">Period <span class="hint">(none = any; pick several)</span></p>
+          <div id="period-chips" class="chips"></div>
 
           <button id="onboarding-continue" class="btn btn-primary mt">Continue</button>
           <p id="onboarding-error" class="error"></p>
@@ -127,7 +103,10 @@
             <button id="dislike-btn" class="round-btn dislike" aria-label="No">✕</button>
             <button id="like-btn" class="round-btn like" aria-label="Yes">♥</button>
           </div>
-          <button id="view-matches-btn" class="btn-link mt">View matches</button>
+          <div class="swipe-links">
+            <button id="new-session-btn" class="btn-link">🔄 New session</button>
+            <button id="view-matches-btn" class="btn-link">View matches</button>
+          </div>
         </div>
 
         <!-- ── Match ──────────────────────────────────────────────── -->

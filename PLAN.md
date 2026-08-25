@@ -41,9 +41,11 @@ live over WebSocket). Works solo too (any like = personal watchlist).
 ## Status
 - [x] **V1** — schema, Worker routes, TMDb + shared pool, Durable Object + live WS, swipe UI, solo, movie/TV toggle. Deployed.
 - [x] **V2.1** — live movie/TV toggle, full watch-provider filtering + "where to watch", match transparency.
-- [x] **V2.2** — real quiz scoring (like/love genre weights + era), persistent solo watchlist.
+- [x] **V2.2** — richer quiz (like/love genres, **genres to avoid**, multi-interval **periods**),
+      persistent solo watchlist, IMDb/RT/Metacritic ratings (OMDb), shareable invite link,
+      swipe gestures + trailer + undo, "New session" fresh deck.
 
 ## Roadmap
-**V2.3** — Letterboxd CSV import (parse export → map to TMDb in batches → build genre_scores).
-**V3** — Plex check, auto-queue in Radarr/Sonarr/Overseerr on match, group mode (3–5 users),
-collaborative filtering, real auth. Polish: swipe gestures/animations (stay vanilla, no framework).
+**Seeds** — "titles I liked" with autocomplete → TMDb recommendations blended into the pool (next).
+**V3** — Overseerr integration (exclude already-requested titles + auto-request on match),
+Letterboxd CSV import, group mode, real auth. (Plex paused by decision.)

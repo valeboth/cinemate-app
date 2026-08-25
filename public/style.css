@@ -155,6 +155,16 @@ select.input {
   border-color: transparent;
   color: #fff;
 }
+.chip.avoid {
+  background: var(--nope);
+  border-color: var(--nope);
+  color: #fff;
+}
+.swipe-links {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+}
 
 .card-box {
   background: var(--surface);

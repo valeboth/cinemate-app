@@ -5,7 +5,7 @@
 // The order may be shuffled per user; what matters is the shared pool, not the order.
 
 import type { DeckCard, Env, MediaType, Profile, Room } from "../types";
-import { discoverTitles, getGenreMap, getTitleCard, type Era, type Popularity } from "../services/tmdb";
+import { discoverTitles, getGenreMap, getTitleCard, PERIOD_RANGES } from "../services/tmdb";
 import { mapProfile } from "./mappers";
 
 const TOP_GENRES = 3;
@@ -42,30 +42,65 @@ function combineTopGenres(a: Profile | null, b: Profile | null): number[] {
     .map((g) => g.id);
 }
 
-/** Shared era preference: use it only if both users agree (or solo). */
-function combineEra(a: Profile | null, b: Profile | null): Era | null {
-  const eras = [a?.era_pref, b?.era_pref].filter(
-    (e): e is Era => e === "recent" || e === "classic",
-  );
-  if (eras.length === 0) return null;
-  return eras.every((e) => e === eras[0]) ? eras[0] : null;
+/** Avoid genres: strict union — if either user avoids a genre, it's excluded for both. */
+function unionAvoidGenres(a: Profile | null, b: Profile | null): number[] {
+  const set = new Set<number>();
+  for (const p of [a, b]) for (const g of p?.prefs.avoid_genres ?? []) set.add(g);
+  return [...set];
 }
 
-/** Shared min rating: the lower of the two (inclusive, avoids starving the deck). */
-function combineMinRating(a: Profile | null, b: Profile | null): number | null {
-  const vals = [a?.quiz_prefs.min_rating, b?.quiz_prefs.min_rating].filter(
-    (v): v is number => typeof v === "number" && v > 0,
-  );
-  return vals.length ? Math.min(...vals) : null;
+/** Periods: union of both users' selected intervals (kept only if known). */
+function unionPeriods(a: Profile | null, b: Profile | null): string[] {
+  const set = new Set<string>();
+  for (const p of [a, b]) for (const k of p?.prefs.periods ?? []) if (PERIOD_RANGES[k]) set.add(k);
+  return [...set];
 }
 
-/** Shared popularity preference: use it only if both agree (or solo). */
-function combinePopularity(a: Profile | null, b: Profile | null): Popularity | null {
-  const vals = [a?.quiz_prefs.popularity, b?.quiz_prefs.popularity].filter(
-    (v): v is Popularity => v === "gems" || v === "blockbusters",
-  );
-  if (vals.length === 0) return null;
-  return vals.every((v) => v === vals[0]) ? vals[0] : null;
+/** Build the pool: one discover per selected period (union), or a single discover if none. */
+async function generatePool(
+  env: Env,
+  room: Room,
+  genreIds: number[],
+  avoidGenres: number[],
+  periods: string[],
+): Promise<DeckCard[]> {
+  if (periods.length === 0) {
+    return discoverTitles(env, {
+      mediaType: room.media_type,
+      genreIds,
+      avoidGenres,
+      platform: room.platform_filter,
+      pages: 2,
+    });
+  }
+  // Cap pages/interval so many intervals don't blow the subrequest budget.
+  const pagesPer = periods.length > 4 ? 1 : 2;
+  const bounds = periods.map((key): [number, number] => {
+    const r = PERIOD_RANGES[key];
+    return [r?.gte ? Number(r.gte.slice(0, 4)) : 0, r?.lte ? Number(r.lte.slice(0, 4)) : 9999];
+  });
+  const seen = new Set<number>();
+  const cards: DeckCard[] = [];
+  for (const key of periods) {
+    const range = PERIOD_RANGES[key];
+    if (!range) continue;
+    const part = await discoverTitles(env, {
+      mediaType: room.media_type,
+      genreIds,
+      avoidGenres,
+      platform: room.platform_filter,
+      dateGte: range.gte ?? null,
+      dateLte: range.lte ?? null,
+      pages: pagesPer,
+    });
+    for (const c of part) if (!seen.has(c.tmdb_id)) { seen.add(c.tmdb_id); cards.push(c); }
+  }
+  // Post-filter on the displayed year: the TMDb filter is on primary_release_date,
+  // but release_year comes from the RO-localized release_date (they can differ).
+  return cards.filter((c) => {
+    const y = c.release_year;
+    return y != null && bounds.some(([mn, mx]) => y >= mn && y <= mx);
+  });
 }
 
 async function rebuildCardsForPool(env: Env, room: Room): Promise<DeckCard[]> {
@@ -108,23 +143,15 @@ export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult>
     loadProfile(env, room.user_b_id),
   ]);
   const genreIds = combineTopGenres(profileA, profileB);
-  const era = combineEra(profileA, profileB);
-  const minRating = combineMinRating(profileA, profileB);
-  const popularity = combinePopularity(profileA, profileB);
+  const avoidGenres = unionAvoidGenres(profileA, profileB);
+  const periods = unionPeriods(profileA, profileB);
 
-  let cards = await discoverTitles(env, {
-    mediaType: room.media_type,
-    genreIds,
-    era,
-    minRating,
-    popularity,
-    platform: room.platform_filter,
-    pages: 2,
-  });
+  let cards = await generatePool(env, room, genreIds, avoidGenres, periods);
 
-  // Fallback: filters returned too few → retry without platform/genres/era.
+  // Fallback: filters returned too few → drop liked-genres/periods/platform,
+  // but ALWAYS keep avoid_genres (a "no" must always hold).
   if (cards.length < MIN_DECK) {
-    cards = await discoverTitles(env, { mediaType: room.media_type, pages: 2 });
+    cards = await discoverTitles(env, { mediaType: room.media_type, avoidGenres, pages: 2 });
   }
 
   const ids = cards.map((c) => c.tmdb_id);

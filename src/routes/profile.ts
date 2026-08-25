@@ -5,50 +5,50 @@ import { mapProfile } from "../lib/mappers";
 
 export const profile = new Hono<{ Bindings: Env }>();
 
+function toNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(Number).filter((n) => Number.isFinite(n));
+}
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((x): x is string => typeof x === "string");
+}
+
 // POST /api/profile/quiz — upsert the taste profile.
-// Body: { user_id, genre_scores?, era_pref?, mood_pref?, media_type_pref? }
+// Body: { user_id, genre_scores?, avoid_genres?: number[], periods?: string[] }
+// Every field is optional (empty = no filter). Seeds are added in a later step.
 profile.post("/quiz", async (c) => {
   const body = await c.req.json().catch(() => null);
   const userId = typeof body?.user_id === "string" ? body.user_id : "";
   if (!userId) return c.json({ error: "user_id_required" }, 400);
 
-  const mediaPref = body?.media_type_pref ?? null;
-  if (mediaPref !== null && mediaPref !== "movie" && mediaPref !== "tv") {
-    return c.json({ error: "media_type_pref_invalid" }, 400);
-  }
-
   const genreScores =
     body?.genre_scores && typeof body.genre_scores === "object" && !Array.isArray(body.genre_scores)
       ? JSON.stringify(body.genre_scores)
       : "{}";
-  const eraPref = typeof body?.era_pref === "string" ? body.era_pref : null;
-  const moodPref = typeof body?.mood_pref === "string" ? body.mood_pref : null;
 
-  // Extra quiz preferences (min_rating, popularity) → validated JSON.
   const prefs: Record<string, unknown> = {};
-  const minRating = Number(body?.min_rating);
-  if (Number.isFinite(minRating) && minRating > 0 && minRating <= 10) prefs.min_rating = minRating;
-  if (body?.popularity === "gems" || body?.popularity === "blockbusters") {
-    prefs.popularity = body.popularity;
-  }
-  const quizPrefs = JSON.stringify(prefs);
+  const avoidGenres = toNumberArray(body?.avoid_genres);
+  const periods = toStringArray(body?.periods);
+  if (avoidGenres.length) prefs.avoid_genres = avoidGenres;
+  if (periods.length) prefs.periods = periods;
+  // seeds are preserved when present (set by the seeds step).
+  if (Array.isArray(body?.seeds)) prefs.seeds = body.seeds;
+  const prefsJson = JSON.stringify(prefs);
 
   if (!(await userExists(c.env.DB, userId))) {
     return c.json({ error: "user_not_found" }, 404);
   }
 
   const row = await c.env.DB.prepare(
-    `INSERT INTO profiles (user_id, genre_scores, era_pref, mood_pref, media_type_pref, quiz_prefs)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO profiles (user_id, genre_scores, prefs)
+     VALUES (?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET
-       genre_scores    = excluded.genre_scores,
-       era_pref        = excluded.era_pref,
-       mood_pref       = excluded.mood_pref,
-       media_type_pref = excluded.media_type_pref,
-       quiz_prefs      = excluded.quiz_prefs
+       genre_scores = excluded.genre_scores,
+       prefs        = excluded.prefs
      RETURNING *`,
   )
-    .bind(userId, genreScores, eraPref, moodPref, mediaPref, quizPrefs)
+    .bind(userId, genreScores, prefsJson)
     .first<Record<string, unknown>>();
 
   if (!row) return c.json({ error: "upsert_failed" }, 500);

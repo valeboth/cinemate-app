@@ -387,3 +387,36 @@ rooms.get("/:id/trailer/:tmdbId", async (c) => {
   const key = await getTrailerKey(c.env, mediaType, tmdbId);
   return c.json({ tmdb_id: tmdbId, youtube_key: key }, 200);
 });
+
+// POST /api/rooms/:id/new-session — fresh deck: reset the pool + clear the room's swipes.
+// Keeps the room (pairing intact); both clients reload via a deck_reset broadcast.
+// Body: { user_id }
+rooms.post("/:id/new-session", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  const userId = typeof body?.user_id === "string" ? body.user_id : "";
+  if (!userId) return c.json({ error: "user_id_required" }, 400);
+
+  const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const room = mapRoom(row);
+  if (userId !== room.user_a_id && userId !== room.user_b_id) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  await c.env.DB.prepare("DELETE FROM swipes WHERE room_id = ?").bind(room.id).run();
+  await resetDeck(c.env, room.id);
+
+  const stub = c.env.ROOM.get(c.env.ROOM.idFromName(room.id));
+  try {
+    await stub.fetch(
+      new Request("https://do/broadcast", { method: "POST", body: JSON.stringify({ type: "deck_reset" }) }),
+    );
+  } catch {
+    // best-effort
+  }
+
+  return c.json({ ok: true }, 200);
+});
