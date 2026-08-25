@@ -5,7 +5,7 @@
 // The order may be shuffled per user; what matters is the shared pool, not the order.
 
 import type { DeckCard, Env, MediaType, Profile, Room } from "../types";
-import { discoverTitles, getGenreMap, getTitleCard, type Era } from "../services/tmdb";
+import { discoverTitles, getGenreMap, getTitleCard, type Era, type Popularity } from "../services/tmdb";
 import { mapProfile } from "./mappers";
 
 const TOP_GENRES = 3;
@@ -51,6 +51,23 @@ function combineEra(a: Profile | null, b: Profile | null): Era | null {
   return eras.every((e) => e === eras[0]) ? eras[0] : null;
 }
 
+/** Shared min rating: the lower of the two (inclusive, avoids starving the deck). */
+function combineMinRating(a: Profile | null, b: Profile | null): number | null {
+  const vals = [a?.quiz_prefs.min_rating, b?.quiz_prefs.min_rating].filter(
+    (v): v is number => typeof v === "number" && v > 0,
+  );
+  return vals.length ? Math.min(...vals) : null;
+}
+
+/** Shared popularity preference: use it only if both agree (or solo). */
+function combinePopularity(a: Profile | null, b: Profile | null): Popularity | null {
+  const vals = [a?.quiz_prefs.popularity, b?.quiz_prefs.popularity].filter(
+    (v): v is Popularity => v === "gems" || v === "blockbusters",
+  );
+  if (vals.length === 0) return null;
+  return vals.every((v) => v === vals[0]) ? vals[0] : null;
+}
+
 async function rebuildCardsForPool(env: Env, room: Room): Promise<DeckCard[]> {
   const results = await Promise.all(
     room.deck.map((id) => getTitleCard(env, room.media_type, id)),
@@ -92,11 +109,15 @@ export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult>
   ]);
   const genreIds = combineTopGenres(profileA, profileB);
   const era = combineEra(profileA, profileB);
+  const minRating = combineMinRating(profileA, profileB);
+  const popularity = combinePopularity(profileA, profileB);
 
   let cards = await discoverTitles(env, {
     mediaType: room.media_type,
     genreIds,
     era,
+    minRating,
+    popularity,
     platform: room.platform_filter,
     pages: 2,
   });

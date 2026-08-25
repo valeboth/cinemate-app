@@ -12,13 +12,21 @@ function wsUrl(path) {
 }
 
 // ── Genres ──────────────────────────────────────────────────────────────────
-// Quiz subset (with ids).
+// Full movie genre list for the quiz (niche selection).
 const GENRES = [
-  { id: 28, name: "Action" }, { id: 12, name: "Adventure" }, { id: 35, name: "Comedy" },
-  { id: 18, name: "Drama" }, { id: 27, name: "Horror" }, { id: 878, name: "Sci-Fi" },
-  { id: 53, name: "Thriller" }, { id: 10749, name: "Romance" }, { id: 16, name: "Animation" },
-  { id: 9648, name: "Mystery" }, { id: 14, name: "Fantasy" }, { id: 80, name: "Crime" },
+  { id: 28, name: "Action" }, { id: 12, name: "Adventure" }, { id: 16, name: "Animation" },
+  { id: 35, name: "Comedy" }, { id: 80, name: "Crime" }, { id: 99, name: "Documentary" },
+  { id: 18, name: "Drama" }, { id: 10751, name: "Family" }, { id: 14, name: "Fantasy" },
+  { id: 36, name: "History" }, { id: 27, name: "Horror" }, { id: 10402, name: "Music" },
+  { id: 9648, name: "Mystery" }, { id: 10749, name: "Romance" }, { id: 878, name: "Sci-Fi" },
+  { id: 53, name: "Thriller" }, { id: 10752, name: "War" }, { id: 37, name: "Western" },
 ];
+// Vibe → implied genres (seeded with a moderate weight into genre_scores).
+const VIBE_GENRES = {
+  feelgood: [35, 10749, 10751, 12],
+  dark: [53, 80, 27, 9648],
+  mindbending: [878, 9648, 53, 14],
+};
 // Full id → name map (movie ∪ tv) for card labels.
 const GENRE_NAMES = {
   28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
@@ -37,6 +45,9 @@ const state = {
   username: localStorage.getItem("cinemate_username") || null,
   genreLevels: {},
   era: "",
+  minRating: "",
+  popularity: "",
+  vibe: "",
   mediaType: "movie",
   room: null,
   soloMode: false,
@@ -105,14 +116,22 @@ function renderGenreChips() {
   });
 }
 
-function setupEraToggle() {
-  document.querySelectorAll("#era-toggle .toggle-opt").forEach((btn) => {
+// Generic single-choice toggle: on click, activate one option and store its value in state[key].
+function setupExclusiveToggle(containerId, dataAttr, key) {
+  document.querySelectorAll(`#${containerId} .toggle-opt`).forEach((btn) => {
     btn.onclick = () => {
-      document.querySelectorAll("#era-toggle .toggle-opt").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(`#${containerId} .toggle-opt`).forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      state.era = btn.dataset.era;
+      state[key] = btn.dataset[dataAttr];
     };
   });
+}
+
+function setupQuizToggles() {
+  setupExclusiveToggle("era-toggle", "era", "era");
+  setupExclusiveToggle("rating-toggle", "rating", "minRating");
+  setupExclusiveToggle("popularity-toggle", "pop", "popularity");
+  setupExclusiveToggle("vibe-toggle", "vibe", "vibe");
 }
 
 async function handleOnboarding() {
@@ -134,9 +153,20 @@ async function handleOnboarding() {
     for (const [id, level] of Object.entries(state.genreLevels)) {
       genreScores[id] = LEVEL_SCORE[level] || 0.6;
     }
+    // Seed vibe-implied genres with a moderate weight (without lowering explicit picks).
+    for (const gid of VIBE_GENRES[state.vibe] || []) {
+      genreScores[gid] = Math.max(genreScores[gid] || 0, 0.5);
+    }
     await api("/api/profile/quiz", {
       method: "POST",
-      body: JSON.stringify({ user_id: user.id, genre_scores: genreScores, era_pref: state.era || null }),
+      body: JSON.stringify({
+        user_id: user.id,
+        genre_scores: genreScores,
+        era_pref: state.era || null,
+        mood_pref: state.vibe || null,
+        min_rating: state.minRating ? Number(state.minRating) : undefined,
+        popularity: state.popularity || undefined,
+      }),
     });
 
     updateUserBadge();
@@ -560,6 +590,39 @@ async function showWatchlist() {
   }
 }
 
+// ── Profile / reset ────────────────────────────────────────────────────────
+function showProfile() {
+  $("profile-name").textContent = state.username ? `Signed in as ${state.username}` : "";
+  showScreen("screen-profile");
+}
+
+function resetData() {
+  localStorage.removeItem("cinemate_user_id");
+  localStorage.removeItem("cinemate_username");
+  closeWs();
+  state.userId = null;
+  state.username = null;
+  state.genreLevels = {};
+  state.era = "";
+  state.minRating = "";
+  state.popularity = "";
+  state.vibe = "";
+  state.room = null;
+  state.soloMode = false;
+  state.deck = [];
+  state.deckIndex = 0;
+  state.pendingCode = null;
+  state.lastSwiped = null;
+  $("user-badge").classList.add("hidden");
+  $("username-input").value = "";
+  renderGenreChips();
+  // reset all quiz toggles to the first option ("Any").
+  ["era-toggle", "rating-toggle", "popularity-toggle", "vibe-toggle"].forEach((id) => {
+    document.querySelectorAll(`#${id} .toggle-opt`).forEach((b, i) => b.classList.toggle("active", i === 0));
+  });
+  showScreen("screen-onboarding");
+}
+
 // ── Invite ────────────────────────────────────────────────────────────────────
 function inviteLink() {
   return `${location.origin}/join?code=${state.room.join_code}`;
@@ -576,7 +639,7 @@ async function copyText(text, label) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 function init() {
   renderGenreChips();
-  setupEraToggle();
+  setupQuizToggles();
   setupMediaToggle();
   setupGestures();
 
@@ -594,8 +657,10 @@ function init() {
   $("view-matches-btn").onclick = showMatchesList;
   $("matches-back-btn").onclick = () => showScreen("screen-swipe");
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");
-  $("copy-code-btn").onclick = () => copyText(state.room.join_code, "Code");
-  $("copy-link-btn").onclick = () => copyText(inviteLink(), "Link");
+  $("copy-link-btn").onclick = () => copyText(inviteLink(), "Invite link");
+  $("user-badge").onclick = showProfile;
+  $("reset-btn").onclick = resetData;
+  $("profile-back-btn").onclick = () => showScreen("screen-lobby");
   $("trailer-close").onclick = closeTrailer;
   $("trailer-overlay").onclick = (e) => {
     if (e.target === $("trailer-overlay")) closeTrailer();

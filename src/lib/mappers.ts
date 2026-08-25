@@ -1,6 +1,6 @@
 // Map D1 rows (Record<string, unknown>) → application types.
 
-import type { MediaType, Profile, Room, RoomStatus } from "../types";
+import type { MediaType, Popularity, Profile, QuizPrefs, Room, RoomStatus } from "../types";
 
 function parseJsonObject(value: unknown): Record<string, number> {
   if (typeof value !== "string") return {};
@@ -38,6 +38,23 @@ export function mapRoom(row: Record<string, unknown>): Room {
   };
 }
 
+function parseQuizPrefs(value: unknown): QuizPrefs {
+  if (typeof value !== "string") return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const p = parsed as Record<string, unknown>;
+    const out: QuizPrefs = {};
+    if (typeof p.min_rating === "number") out.min_rating = p.min_rating;
+    if (p.popularity === "gems" || p.popularity === "blockbusters") {
+      out.popularity = p.popularity as Popularity;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export function mapProfile(row: Record<string, unknown>): Profile {
   return {
     user_id: String(row.user_id),
@@ -45,5 +62,6 @@ export function mapProfile(row: Record<string, unknown>): Profile {
     era_pref: row.era_pref == null ? null : String(row.era_pref),
     mood_pref: row.mood_pref == null ? null : String(row.mood_pref),
     media_type_pref: row.media_type_pref == null ? null : (String(row.media_type_pref) as MediaType),
+    quiz_prefs: parseQuizPrefs(row.quiz_prefs),
   };
 }

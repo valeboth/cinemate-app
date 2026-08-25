@@ -55,6 +55,7 @@ body {
   background: var(--surface);
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
+  cursor: pointer;
 }
 
 #content {
@@ -187,6 +188,9 @@ select.input {
 .toggle-opt.active {
   background: linear-gradient(135deg, var(--accent), var(--accent-dim));
   color: #fff;
+}
+.toggle.wrap {
+  flex-wrap: wrap;
 }
 .toggle.small {
   padding: 0.15rem;

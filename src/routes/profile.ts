@@ -24,21 +24,31 @@ profile.post("/quiz", async (c) => {
   const eraPref = typeof body?.era_pref === "string" ? body.era_pref : null;
   const moodPref = typeof body?.mood_pref === "string" ? body.mood_pref : null;
 
+  // Extra quiz preferences (min_rating, popularity) → validated JSON.
+  const prefs: Record<string, unknown> = {};
+  const minRating = Number(body?.min_rating);
+  if (Number.isFinite(minRating) && minRating > 0 && minRating <= 10) prefs.min_rating = minRating;
+  if (body?.popularity === "gems" || body?.popularity === "blockbusters") {
+    prefs.popularity = body.popularity;
+  }
+  const quizPrefs = JSON.stringify(prefs);
+
   if (!(await userExists(c.env.DB, userId))) {
     return c.json({ error: "user_not_found" }, 404);
   }
 
   const row = await c.env.DB.prepare(
-    `INSERT INTO profiles (user_id, genre_scores, era_pref, mood_pref, media_type_pref)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO profiles (user_id, genre_scores, era_pref, mood_pref, media_type_pref, quiz_prefs)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET
        genre_scores    = excluded.genre_scores,
        era_pref        = excluded.era_pref,
        mood_pref       = excluded.mood_pref,
-       media_type_pref = excluded.media_type_pref
+       media_type_pref = excluded.media_type_pref,
+       quiz_prefs      = excluded.quiz_prefs
      RETURNING *`,
   )
-    .bind(userId, genreScores, eraPref, moodPref, mediaPref)
+    .bind(userId, genreScores, eraPref, moodPref, mediaPref, quizPrefs)
     .first<Record<string, unknown>>();
 
   if (!row) return c.json({ error: "upsert_failed" }, 500);

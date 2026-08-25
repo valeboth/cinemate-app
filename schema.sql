@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   era_pref        TEXT,
   mood_pref       TEXT,
   media_type_pref TEXT CHECK (media_type_pref IN ('movie', 'tv')),
+  -- quiz_prefs: JSON with extra quiz answers, e.g. {"min_rating":7,"popularity":"gems"}.
+  quiz_prefs      TEXT NOT NULL DEFAULT '{}',
   FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
