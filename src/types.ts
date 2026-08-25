@@ -34,7 +34,6 @@ export interface SeedTitle {
 /** Quiz preferences stored as JSON in profiles.prefs. Each is optional (empty = no filter). */
 export interface ProfilePrefs {
   avoid_genres?: number[]; // TMDb genre ids → without_genres
-  periods?: string[]; // interval keys, see PERIOD_RANGES in services/tmdb.ts
   seeds?: SeedTitle[]; // liked titles → recommendations (added in a later step)
 }
 

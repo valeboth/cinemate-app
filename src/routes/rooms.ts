@@ -3,7 +3,7 @@ import type { Env } from "../types";
 import { genId } from "../lib/ids";
 import { uniqueJoinCode, userExists } from "../lib/db";
 import { mapRoom } from "../lib/mappers";
-import { getOrCreateDeck, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
+import { getDeckForUser, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
 import { getWatchProviders, getImdbId, getTrailerKey } from "../services/tmdb";
 import { getOmdbRatings } from "../services/omdb";
 
@@ -124,18 +124,9 @@ rooms.get("/:id/deck", async (c) => {
   }
 
   try {
-    const deck = await getOrCreateDeck(c.env, room);
-    let cards = deck.cards;
-    if (userId) {
-      const { results } = await c.env.DB.prepare(
-        "SELECT tmdb_id FROM swipes WHERE room_id = ? AND user_id = ?",
-      )
-        .bind(id, userId)
-        .all<{ tmdb_id: number }>();
-      const seen = new Set((results ?? []).map((r) => r.tmdb_id));
-      cards = cards.filter((card) => !seen.has(card.tmdb_id));
-    }
-    return c.json({ ...deck, cards }, 200);
+    // Shared pool, but ordered by the requesting user's taste + their swipes excluded.
+    const deck = await getDeckForUser(c.env, room, userId ?? null);
+    return c.json(deck, 200);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return c.json({ error: "deck_generation_failed", detail }, 502);

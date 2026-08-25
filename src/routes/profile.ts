@@ -9,13 +9,9 @@ function toNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return value.map(Number).filter((n) => Number.isFinite(n));
 }
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((x): x is string => typeof x === "string");
-}
 
 // POST /api/profile/quiz — upsert the taste profile.
-// Body: { user_id, genre_scores?, avoid_genres?: number[], periods?: string[] }
+// Body: { user_id, genre_scores?, avoid_genres?: number[] }
 // Every field is optional (empty = no filter). Seeds are added in a later step.
 profile.post("/quiz", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -29,9 +25,7 @@ profile.post("/quiz", async (c) => {
 
   const prefs: Record<string, unknown> = {};
   const avoidGenres = toNumberArray(body?.avoid_genres);
-  const periods = toStringArray(body?.periods);
   if (avoidGenres.length) prefs.avoid_genres = avoidGenres;
-  if (periods.length) prefs.periods = periods;
   // seeds are preserved when present (set by the seeds step).
   if (Array.isArray(body?.seeds)) prefs.seeds = body.seeds;
   const prefsJson = JSON.stringify(prefs);

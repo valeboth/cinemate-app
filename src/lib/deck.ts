@@ -5,7 +5,7 @@
 // The order may be shuffled per user; what matters is the shared pool, not the order.
 
 import type { DeckCard, Env, MediaType, Profile, Room } from "../types";
-import { discoverTitles, getGenreMap, getTitleCard, PERIOD_RANGES } from "../services/tmdb";
+import { discoverTitles, getGenreMap, getTitleCard } from "../services/tmdb";
 import { mapProfile } from "./mappers";
 
 const TOP_GENRES = 3;
@@ -49,58 +49,57 @@ function unionAvoidGenres(a: Profile | null, b: Profile | null): number[] {
   return [...set];
 }
 
-/** Periods: union of both users' selected intervals (kept only if known). */
-function unionPeriods(a: Profile | null, b: Profile | null): string[] {
-  const set = new Set<string>();
-  for (const p of [a, b]) for (const k of p?.prefs.periods ?? []) if (PERIOD_RANGES[k]) set.add(k);
-  return [...set];
+/** Top genres of a single profile (highest scores first). */
+function topGenresOf(p: Profile | null, n = TOP_GENRES): number[] {
+  if (!p) return [];
+  return Object.entries(p.genre_scores)
+    .map(([id, s]) => ({ id: Number(id), s: Number(s) || 0 }))
+    .filter((x) => Number.isFinite(x.id) && x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, n)
+    .map((x) => x.id);
 }
 
-/** Build the pool: one discover per selected period (union), or a single discover if none. */
+/**
+ * Union pool: each user's own slice (their top genres) + a "common ground" slice
+ * (both users' averaged top genres). It's ONE shared pool → matches stay possible;
+ * per-user ordering (rankByProfile) makes each user see their own taste first.
+ */
 async function generatePool(
   env: Env,
   room: Room,
-  genreIds: number[],
+  a: Profile | null,
+  b: Profile | null,
   avoidGenres: number[],
-  periods: string[],
 ): Promise<DeckCard[]> {
-  if (periods.length === 0) {
-    return discoverTitles(env, {
+  const slices: number[][] = [topGenresOf(a)];
+  if (b) slices.push(topGenresOf(b));
+  slices.push(combineTopGenres(a, b)); // common ground
+
+  const seen = new Set<number>();
+  const cards: DeckCard[] = [];
+  for (const genreIds of slices) {
+    const part = await discoverTitles(env, {
       mediaType: room.media_type,
       genreIds,
       avoidGenres,
       platform: room.platform_filter,
       pages: 2,
     });
-  }
-  // Cap pages/interval so many intervals don't blow the subrequest budget.
-  const pagesPer = periods.length > 4 ? 1 : 2;
-  const bounds = periods.map((key): [number, number] => {
-    const r = PERIOD_RANGES[key];
-    return [r?.gte ? Number(r.gte.slice(0, 4)) : 0, r?.lte ? Number(r.lte.slice(0, 4)) : 9999];
-  });
-  const seen = new Set<number>();
-  const cards: DeckCard[] = [];
-  for (const key of periods) {
-    const range = PERIOD_RANGES[key];
-    if (!range) continue;
-    const part = await discoverTitles(env, {
-      mediaType: room.media_type,
-      genreIds,
-      avoidGenres,
-      platform: room.platform_filter,
-      dateGte: range.gte ?? null,
-      dateLte: range.lte ?? null,
-      pages: pagesPer,
-    });
     for (const c of part) if (!seen.has(c.tmdb_id)) { seen.add(c.tmdb_id); cards.push(c); }
   }
-  // Post-filter on the displayed year: the TMDb filter is on primary_release_date,
-  // but release_year comes from the RO-localized release_date (they can differ).
-  return cards.filter((c) => {
-    const y = c.release_year;
-    return y != null && bounds.some(([mn, mx]) => y >= mn && y <= mx);
-  });
+  return cards;
+}
+
+/** Order cards by how well they match a user's genre_scores (their taste first). */
+function rankByProfile(cards: DeckCard[], profile: Profile | null): DeckCard[] {
+  const scores = profile?.genre_scores;
+  if (!scores || Object.keys(scores).length === 0) return cards;
+  const scoreOf = (c: DeckCard) => c.genres.reduce((sum, g) => sum + (Number(scores[g]) || 0), 0);
+  return cards
+    .map((c, i) => ({ c, i, s: scoreOf(c) }))
+    .sort((x, y) => y.s - x.s || x.i - y.i) // stable: taste desc, then original (popularity)
+    .map((x) => x.c);
 }
 
 async function rebuildCardsForPool(env: Env, room: Room): Promise<DeckCard[]> {
@@ -137,24 +136,17 @@ export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult>
     return { room_id: room.id, media_type: room.media_type, generated: false, cards };
   }
 
-  // First generation.
+  // First generation: union pool from both users' tastes + common ground.
   const [profileA, profileB] = await Promise.all([
     loadProfile(env, room.user_a_id),
     loadProfile(env, room.user_b_id),
   ]);
-  const genreIds = combineTopGenres(profileA, profileB);
   const avoidGenres = unionAvoidGenres(profileA, profileB);
-  const periods = unionPeriods(profileA, profileB);
 
-  let cards = await generatePool(env, room, genreIds, avoidGenres, periods);
+  let cards = await generatePool(env, room, profileA, profileB, avoidGenres);
 
-  // Too few → first relax liked-genres/platform but KEEP the periods (never show
-  // out-of-period years) and avoid_genres (a "no" must always hold).
-  if (cards.length < MIN_DECK && genreIds.length > 0) {
-    cards = await generatePool(env, room, [], avoidGenres, periods);
-  }
-  // Only when no period is set do the broad fallback (drop everything except avoid).
-  if (cards.length < MIN_DECK && periods.length === 0) {
+  // Too few → broad fallback (keep only avoid_genres, a "no" must always hold).
+  if (cards.length < MIN_DECK) {
     cards = await discoverTitles(env, { mediaType: room.media_type, avoidGenres, pages: 2 });
   }
 
@@ -165,6 +157,32 @@ export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult>
   await env.TMDB_CACHE.put(cardsKey, JSON.stringify(cards), { expirationTtl: DECK_CARDS_TTL });
 
   return { room_id: room.id, media_type: room.media_type, generated: true, cards };
+}
+
+/**
+ * Serve the deck to a specific user: same shared pool, but ordered by THIS user's
+ * taste (their films first) and with their already-swiped titles excluded.
+ */
+export async function getDeckForUser(
+  env: Env,
+  room: Room,
+  userId: string | null,
+): Promise<DeckResult> {
+  const deck = await getOrCreateDeck(env, room);
+  if (!userId) return deck;
+
+  const profile = await loadProfile(env, userId);
+  let cards = rankByProfile(deck.cards, profile);
+
+  const { results } = await env.DB.prepare(
+    "SELECT tmdb_id FROM swipes WHERE room_id = ? AND user_id = ?",
+  )
+    .bind(room.id, userId)
+    .all<{ tmdb_id: number }>();
+  const seen = new Set((results ?? []).map((r) => r.tmdb_id));
+  cards = cards.filter((c) => !seen.has(c.tmdb_id));
+
+  return { ...deck, cards };
 }
 
 /** Find a card in the room's deck cache (for the match screen). */
