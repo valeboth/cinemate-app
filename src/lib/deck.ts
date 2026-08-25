@@ -4,9 +4,11 @@
 // Both users draw from the SAME pool → this guarantees the overlap needed for a match.
 // The order may be shuffled per user; what matters is the shared pool, not the order.
 
-import type { DeckCard, Env, MediaType, Profile, Room } from "../types";
-import { discoverTitles, getGenreMap, getTitleCard } from "../services/tmdb";
+import type { DeckCard, Env, MediaType, Profile, Room, SeedTitle } from "../types";
+import { discoverTitles, getGenreMap, getRecommendations, getTitleCard } from "../services/tmdb";
 import { mapProfile } from "./mappers";
+
+const MAX_SEEDS_PER_USER = 3;
 
 const TOP_GENRES = 3;
 const MIN_DECK = 5;
@@ -60,10 +62,30 @@ function topGenresOf(p: Profile | null, n = TOP_GENRES): number[] {
     .map((x) => x.id);
 }
 
+/** Collect both users' seed titles (capped per user, deduped). */
+function collectSeeds(a: Profile | null, b: Profile | null): SeedTitle[] {
+  const out: SeedTitle[] = [];
+  const seen = new Set<string>();
+  for (const p of [a, b]) {
+    let n = 0;
+    for (const s of p?.prefs.seeds ?? []) {
+      if (n >= MAX_SEEDS_PER_USER) break;
+      const key = `${s.media_type}:${s.tmdb_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+      n++;
+    }
+  }
+  return out;
+}
+
 /**
- * Union pool: each user's own slice (their top genres) + a "common ground" slice
- * (both users' averaged top genres). It's ONE shared pool → matches stay possible;
- * per-user ordering (rankByProfile) makes each user see their own taste first.
+ * Build the shared pool.
+ *  - With seeds (strongest signal): recommendations of both users' seeds drive the pool
+ *    + a common-ground genre slice; avoid_genres always applied.
+ *  - Without seeds: union of each user's top-genre slice + a common-ground slice.
+ * One shared pool → matches stay possible; per-user weighted shuffle at serve time.
  */
 async function generatePool(
   env: Env,
@@ -72,33 +94,68 @@ async function generatePool(
   b: Profile | null,
   avoidGenres: number[],
 ): Promise<DeckCard[]> {
-  const slices: number[][] = [topGenresOf(a)];
-  if (b) slices.push(topGenresOf(b));
-  slices.push(combineTopGenres(a, b)); // common ground
-
   const seen = new Set<number>();
   const cards: DeckCard[] = [];
+  const addAll = (arr: DeckCard[]) => {
+    for (const c of arr) if (!seen.has(c.tmdb_id)) { seen.add(c.tmdb_id); cards.push(c); }
+  };
+
+  // Seeds only apply to titles of the room's media type (recs of a movie are movies).
+  const seeds = collectSeeds(a, b).filter((s) => s.media_type === room.media_type);
+
+  if (seeds.length > 0) {
+    for (const s of seeds) addAll(await getRecommendations(env, room.media_type, s.tmdb_id));
+    // Common ground so overlap exists even if the two users' seeds diverge.
+    addAll(
+      await discoverTitles(env, {
+        mediaType: room.media_type,
+        genreIds: combineTopGenres(a, b),
+        avoidGenres,
+        platform: room.platform_filter,
+        pages: 1,
+      }),
+    );
+    // Recommendations aren't genre-filtered by the API → enforce avoid_genres here.
+    if (avoidGenres.length > 0) {
+      const av = new Set(avoidGenres);
+      return cards.filter((c) => !c.genres.some((g) => av.has(g)));
+    }
+    return cards;
+  }
+
+  // No applicable seeds → union of genre slices (per-user tastes + common ground).
+  const slices: number[][] = [topGenresOf(a)];
+  if (b) slices.push(topGenresOf(b));
+  slices.push(combineTopGenres(a, b));
   for (const genreIds of slices) {
-    const part = await discoverTitles(env, {
-      mediaType: room.media_type,
-      genreIds,
-      avoidGenres,
-      platform: room.platform_filter,
-      pages: 2,
-    });
-    for (const c of part) if (!seen.has(c.tmdb_id)) { seen.add(c.tmdb_id); cards.push(c); }
+    addAll(
+      await discoverTitles(env, {
+        mediaType: room.media_type,
+        genreIds,
+        avoidGenres,
+        platform: room.platform_filter,
+        pages: 2,
+      }),
+    );
   }
   return cards;
 }
 
-/** Order cards by how well they match a user's genre_scores (their taste first). */
-function rankByProfile(cards: DeckCard[], profile: Profile | null): DeckCard[] {
-  const scores = profile?.genre_scores;
-  if (!scores || Object.keys(scores).length === 0) return cards;
-  const scoreOf = (c: DeckCard) => c.genres.reduce((sum, g) => sum + (Number(scores[g]) || 0), 0);
+/**
+ * Weighted random order: taste-biased but shuffled, so it differs each time and
+ * between the two users (they still converge — same pool). Base weight 1 keeps
+ * every title reachable; taste lifts a user's favourites toward the top.
+ */
+function weightedShuffle(cards: DeckCard[], profile: Profile | null): DeckCard[] {
+  const scores = profile?.genre_scores ?? {};
   return cards
-    .map((c, i) => ({ c, i, s: scoreOf(c) }))
-    .sort((x, y) => y.s - x.s || x.i - y.i) // stable: taste desc, then original (popularity)
+    .map((c) => {
+      const taste = c.genres.reduce((sum, g) => sum + (Number(scores[g]) || 0), 0);
+      const weight = 1 + taste;
+      // Efraimidis–Spirakis weighted sampling key: random^(1/weight).
+      return { c, key: Math.pow(Math.random(), 1 / weight) };
+    })
+    .sort((x, y) => y.key - x.key)
     .map((x) => x.c);
 }
 
@@ -172,7 +229,7 @@ export async function getDeckForUser(
   if (!userId) return deck;
 
   const profile = await loadProfile(env, userId);
-  let cards = rankByProfile(deck.cards, profile);
+  let cards = weightedShuffle(deck.cards, profile);
 
   const { results } = await env.DB.prepare(
     "SELECT tmdb_id FROM swipes WHERE room_id = ? AND user_id = ?",

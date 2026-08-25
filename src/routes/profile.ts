@@ -10,6 +10,18 @@ function toNumberArray(value: unknown): number[] {
   return value.map(Number).filter((n) => Number.isFinite(n));
 }
 
+function toSeeds(value: unknown): { tmdb_id: number; media_type: "movie" | "tv" }[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
+    .map((s) => ({
+      tmdb_id: Number(s.tmdb_id),
+      media_type: s.media_type === "tv" ? ("tv" as const) : ("movie" as const),
+    }))
+    .filter((s) => Number.isInteger(s.tmdb_id) && s.tmdb_id > 0)
+    .slice(0, 6);
+}
+
 // POST /api/profile/quiz — upsert the taste profile.
 // Body: { user_id, genre_scores?, avoid_genres?: number[] }
 // Every field is optional (empty = no filter). Seeds are added in a later step.
@@ -26,8 +38,8 @@ profile.post("/quiz", async (c) => {
   const prefs: Record<string, unknown> = {};
   const avoidGenres = toNumberArray(body?.avoid_genres);
   if (avoidGenres.length) prefs.avoid_genres = avoidGenres;
-  // seeds are preserved when present (set by the seeds step).
-  if (Array.isArray(body?.seeds)) prefs.seeds = body.seeds;
+  const seeds = toSeeds(body?.seeds);
+  if (seeds.length) prefs.seeds = seeds;
   const prefsJson = JSON.stringify(prefs);
 
   if (!(await userExists(c.env.DB, userId))) {

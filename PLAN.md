@@ -44,11 +44,12 @@ live over WebSocket). Works solo too (any like = personal watchlist).
 - [x] **V2.2** — quiz (like/love genres + **genres to avoid**), persistent solo watchlist,
       IMDb/RT/Metacritic ratings (OMDb), shareable invite link, swipe gestures + trailer + undo,
       "New session" fresh deck.
-- [x] **V2.3** — **per-user decks**: one shared union pool (both users' tastes + common ground),
-      but ordered per user (each sees their own taste first) → matches stay possible.
-      (Period filter removed to keep it simple.)
+- [x] **V2.3** — **per-user decks**: one shared union pool, ordered per user (each sees their
+      own taste first) → matches stay possible. (Period filter removed.)
+- [x] **V2.4** — **seed titles** ("titles you loved" with autocomplete → TMDb recommendations
+      drive the pool, avoid_genres enforced) + **weighted-random deck order** (varies each time,
+      per user).
 
 ## Roadmap
-**Seeds** — "titles I liked" with autocomplete → TMDb recommendations blended into the pool (next).
 **V3** — Overseerr integration (exclude already-requested titles + auto-request on match),
 Letterboxd CSV import, group mode, real auth. (Plex paused by decision.)

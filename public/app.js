@@ -39,6 +39,7 @@ const state = {
   username: localStorage.getItem("cinemate_username") || null,
   genreLevels: {},
   avoidGenres: new Set(),
+  seeds: [], // [{ tmdb_id, media_type, title }]
   mediaType: "movie",
   room: null,
   soloMode: false,
@@ -128,6 +129,91 @@ function renderAvoidChips() {
   });
 }
 
+// Seed autocomplete: search TMDb as you type (debounced), pick titles you loved.
+let seedSearchTimer = null;
+function setupSeedSearch() {
+  const input = $("seed-input");
+  input.addEventListener("input", () => {
+    clearTimeout(seedSearchTimer);
+    const q = input.value.trim();
+    if (q.length < 2) {
+      hideSuggestions();
+      return;
+    }
+    seedSearchTimer = setTimeout(() => searchSeeds(q), 300);
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#seed-suggestions") && e.target !== input) hideSuggestions();
+  });
+}
+
+async function searchSeeds(q) {
+  try {
+    const res = await api(`/api/search?q=${encodeURIComponent(q)}`);
+    renderSuggestions(res.results || []);
+  } catch {
+    hideSuggestions();
+  }
+}
+
+function hideSuggestions() {
+  $("seed-suggestions").classList.add("hidden");
+  $("seed-suggestions").innerHTML = "";
+}
+
+function renderSuggestions(list) {
+  const box = $("seed-suggestions");
+  box.innerHTML = "";
+  if (!list.length) {
+    hideSuggestions();
+    return;
+  }
+  list.forEach((hit) => {
+    const row = document.createElement("button");
+    row.className = "suggestion";
+    const thumb = document.createElement("span");
+    thumb.className = "sug-thumb";
+    if (hit.poster_path) thumb.style.backgroundImage = `url(https://image.tmdb.org/t/p/w92${hit.poster_path})`;
+    const label = document.createElement("span");
+    const kind = hit.media_type === "tv" ? "TV" : "Movie";
+    label.textContent = `${hit.title}${hit.year ? " (" + hit.year + ")" : ""} · ${kind}`;
+    row.appendChild(thumb);
+    row.appendChild(label);
+    row.onclick = () => addSeed(hit);
+    box.appendChild(row);
+  });
+  box.classList.remove("hidden");
+}
+
+function addSeed(hit) {
+  if (!state.seeds.some((s) => s.tmdb_id === hit.tmdb_id && s.media_type === hit.media_type)) {
+    if (state.seeds.length >= 6) {
+      toast("Up to 6 titles");
+    } else {
+      state.seeds.push({ tmdb_id: hit.tmdb_id, media_type: hit.media_type, title: hit.title });
+      renderSeedChips();
+    }
+  }
+  $("seed-input").value = "";
+  hideSuggestions();
+}
+
+function renderSeedChips() {
+  const box = $("seed-chips");
+  box.innerHTML = "";
+  state.seeds.forEach((s) => {
+    const chip = document.createElement("button");
+    chip.className = "chip love";
+    chip.textContent = s.title + " ✕";
+    chip.title = "remove";
+    chip.onclick = () => {
+      state.seeds = state.seeds.filter((x) => !(x.tmdb_id === s.tmdb_id && x.media_type === s.media_type));
+      renderSeedChips();
+    };
+    box.appendChild(chip);
+  });
+}
+
 async function handleOnboarding() {
   const err = $("onboarding-error");
   err.textContent = "";
@@ -153,6 +239,7 @@ async function handleOnboarding() {
         user_id: user.id,
         genre_scores: genreScores,
         avoid_genres: [...state.avoidGenres],
+        seeds: state.seeds.map((s) => ({ tmdb_id: s.tmdb_id, media_type: s.media_type })),
       }),
     });
 
@@ -605,6 +692,10 @@ function resetData() {
   state.username = null;
   state.genreLevels = {};
   state.avoidGenres = new Set();
+  state.seeds = [];
+  $("seed-input").value = "";
+  renderSeedChips();
+  hideSuggestions();
   state.room = null;
   state.soloMode = false;
   state.deck = [];
@@ -635,6 +726,7 @@ async function copyText(text, label) {
 function init() {
   renderGenreChips();
   renderAvoidChips();
+  setupSeedSearch();
   setupMediaToggle();
   setupGestures();
 
