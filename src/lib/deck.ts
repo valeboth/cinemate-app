@@ -6,6 +6,7 @@
 
 import type { DeckCard, Env, MediaType, Profile, Room, SeedTitle } from "../types";
 import { discoverTitles, getGenreMap, getRecommendations, getTitleCard } from "../services/tmdb";
+import { getRequestedTmdbIds } from "../services/overseerr";
 import { mapProfile } from "./mappers";
 
 const MAX_SEEDS_PER_USER = 3;
@@ -231,13 +232,14 @@ export async function getDeckForUser(
   const profile = await loadProfile(env, userId);
   let cards = weightedShuffle(deck.cards, profile);
 
-  const { results } = await env.DB.prepare(
-    "SELECT tmdb_id FROM swipes WHERE room_id = ? AND user_id = ?",
-  )
-    .bind(room.id, userId)
-    .all<{ tmdb_id: number }>();
+  const [{ results }, requested] = await Promise.all([
+    env.DB.prepare("SELECT tmdb_id FROM swipes WHERE room_id = ? AND user_id = ?")
+      .bind(room.id, userId)
+      .all<{ tmdb_id: number }>(),
+    getRequestedTmdbIds(env), // already requested/available in Overseerr (best-effort)
+  ]);
   const seen = new Set((results ?? []).map((r) => r.tmdb_id));
-  cards = cards.filter((c) => !seen.has(c.tmdb_id));
+  cards = cards.filter((c) => !seen.has(c.tmdb_id) && !requested.has(c.tmdb_id));
 
   return { ...deck, cards };
 }
