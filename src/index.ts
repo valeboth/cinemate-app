@@ -4,7 +4,6 @@ import { users } from "./routes/users";
 import { profile } from "./routes/profile";
 import { rooms } from "./routes/rooms";
 import { search } from "./routes/search";
-import { pingOverseerr } from "./services/overseerr";
 
 // Durable Object — live per-room state (WebSocket + match broadcast).
 export { Room } from "./durable-objects/room";
@@ -17,9 +16,6 @@ app.route("/api/users", users);
 app.route("/api/profile", profile);
 app.route("/api/rooms", rooms);
 app.route("/api/search", search);
-
-// Overseerr connectivity check (debug the tunnel/Access/API-key setup).
-app.get("/api/overseerr/ping", async (c) => c.json(await pingOverseerr(c.env)));
 
 // Invite link path: serve the SPA shell so ?code= is picked up by the frontend.
 app.get("/join", (c) => c.env.ASSETS.fetch(new Request(new URL("/index.html", c.req.url))));

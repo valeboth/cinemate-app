@@ -71,27 +71,6 @@ export async function getRequestedTmdbIds(env: Env): Promise<Set<number>> {
   return ids;
 }
 
-export interface PingResult {
-  configured: boolean;
-  ok: boolean;
-  version?: string;
-  http?: number;
-  error?: string;
-}
-
-/** Connectivity + auth check against Overseerr (for debugging the setup). */
-export async function pingOverseerr(env: Env): Promise<PingResult> {
-  if (!overseerrConfigured(env)) return { configured: false, ok: false };
-  try {
-    const res = await fetch(`${baseUrl(env)}/api/v1/status`, { headers: authHeaders(env) });
-    if (!res.ok) return { configured: true, ok: false, http: res.status };
-    const data = (await res.json()) as { version?: string };
-    return { configured: true, ok: true, version: data.version };
-  } catch (e) {
-    return { configured: true, ok: false, error: e instanceof Error ? e.message : "error" };
-  }
-}
-
 export interface RequestResult {
   ok: boolean;
   error?: string;
