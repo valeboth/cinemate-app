@@ -10,13 +10,16 @@ function toNumberArray(value: unknown): number[] {
   return value.map(Number).filter((n) => Number.isFinite(n));
 }
 
-function toSeeds(value: unknown): { tmdb_id: number; media_type: "movie" | "tv" }[] {
+function toSeeds(
+  value: unknown,
+): { tmdb_id: number; media_type: "movie" | "tv"; title?: string }[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
     .map((s) => ({
       tmdb_id: Number(s.tmdb_id),
       media_type: s.media_type === "tv" ? ("tv" as const) : ("movie" as const),
+      ...(typeof s.title === "string" ? { title: s.title.slice(0, 120) } : {}),
     }))
     .filter((s) => Number.isInteger(s.tmdb_id) && s.tmdb_id > 0)
     .slice(0, 6);
