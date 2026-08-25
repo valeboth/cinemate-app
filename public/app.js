@@ -21,18 +21,6 @@ const GENRES = [
   { id: 9648, name: "Mystery" }, { id: 10749, name: "Romance" }, { id: 878, name: "Sci-Fi" },
   { id: 53, name: "Thriller" }, { id: 10752, name: "War" }, { id: 37, name: "Western" },
 ];
-// Period intervals (keys must match PERIOD_RANGES on the server).
-const PERIODS = [
-  { key: "pre1980", label: "Pre-1980" },
-  { key: "1980s", label: "80s" },
-  { key: "1990s", label: "90s" },
-  { key: "2000-2005", label: "2000–05" },
-  { key: "2005-2010", label: "2005–10" },
-  { key: "2010-2015", label: "2010–15" },
-  { key: "2015-2020", label: "2015–20" },
-  { key: "2020-2023", label: "2020–23" },
-  { key: "thisyear", label: "This year" },
-];
 // Full id → name map (movie ∪ tv) for card labels.
 const GENRE_NAMES = {
   28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
@@ -51,7 +39,6 @@ const state = {
   username: localStorage.getItem("cinemate_username") || null,
   genreLevels: {},
   avoidGenres: new Set(),
-  periods: new Set(),
   mediaType: "movie",
   room: null,
   soloMode: false,
@@ -141,27 +128,6 @@ function renderAvoidChips() {
   });
 }
 
-// Multi-select period chips.
-function renderPeriodChips() {
-  const box = $("period-chips");
-  box.innerHTML = "";
-  PERIODS.forEach((p) => {
-    const chip = document.createElement("button");
-    chip.className = "chip";
-    chip.textContent = p.label;
-    chip.onclick = () => {
-      if (state.periods.has(p.key)) {
-        state.periods.delete(p.key);
-        chip.classList.remove("love");
-      } else {
-        state.periods.add(p.key);
-        chip.classList.add("love");
-      }
-    };
-    box.appendChild(chip);
-  });
-}
-
 async function handleOnboarding() {
   const err = $("onboarding-error");
   err.textContent = "";
@@ -187,7 +153,6 @@ async function handleOnboarding() {
         user_id: user.id,
         genre_scores: genreScores,
         avoid_genres: [...state.avoidGenres],
-        periods: [...state.periods],
       }),
     });
 
@@ -640,7 +605,6 @@ function resetData() {
   state.username = null;
   state.genreLevels = {};
   state.avoidGenres = new Set();
-  state.periods = new Set();
   state.room = null;
   state.soloMode = false;
   state.deck = [];
@@ -651,7 +615,6 @@ function resetData() {
   $("username-input").value = "";
   renderGenreChips();
   renderAvoidChips();
-  renderPeriodChips();
   showScreen("screen-onboarding");
 }
 
@@ -672,7 +635,6 @@ async function copyText(text, label) {
 function init() {
   renderGenreChips();
   renderAvoidChips();
-  renderPeriodChips();
   setupMediaToggle();
   setupGestures();
 

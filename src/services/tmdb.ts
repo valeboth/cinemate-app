@@ -12,20 +12,6 @@ const CACHE_TTL_SECONDS = 60 * 60 * 24; // 24h for TMDb responses
 const TMDB_REGION = "RO"; // watch providers + release region
 const TMDB_LANG = "en-US";
 
-// Predefined period intervals → date ranges (used by the "period" quiz field).
-// Keys must match the frontend chips.
-const CURRENT_YEAR = new Date().getFullYear();
-export const PERIOD_RANGES: Record<string, { gte?: string; lte?: string }> = {
-  pre1980: { lte: "1979-12-31" },
-  "1980s": { gte: "1980-01-01", lte: "1989-12-31" },
-  "1990s": { gte: "1990-01-01", lte: "1999-12-31" },
-  "2000-2005": { gte: "2000-01-01", lte: "2005-12-31" },
-  "2005-2010": { gte: "2005-01-01", lte: "2010-12-31" },
-  "2010-2015": { gte: "2010-01-01", lte: "2015-12-31" },
-  "2015-2020": { gte: "2015-01-01", lte: "2020-12-31" },
-  "2020-2023": { gte: "2020-01-01", lte: "2023-12-31" },
-  thisyear: { gte: `${CURRENT_YEAR}-01-01` },
-};
 
 interface TmdbDiscoverResult {
   id: number;
@@ -139,8 +125,6 @@ export interface DiscoverOptions {
   genreIds?: number[];
   avoidGenres?: number[];
   platform?: string | null;
-  dateGte?: string | null; // e.g. "1990-01-01"
-  dateLte?: string | null; // e.g. "1999-12-31"
   pages?: number;
 }
 
@@ -149,7 +133,6 @@ export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<D
   const pages = Math.max(1, Math.min(opts.pages ?? 2, 5));
   const cards: DeckCard[] = [];
   const seen = new Set<number>();
-  const dateField = opts.mediaType === "movie" ? "primary_release_date" : "first_air_date";
 
   for (let page = 1; page <= pages; page++) {
     const params: Record<string, string> = {
@@ -166,8 +149,6 @@ export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<D
     if (opts.avoidGenres && opts.avoidGenres.length > 0) {
       params.without_genres = opts.avoidGenres.join(","); // exclude any of these
     }
-    if (opts.dateGte) params[`${dateField}.gte`] = opts.dateGte;
-    if (opts.dateLte) params[`${dateField}.lte`] = opts.dateLte;
 
     const providerId = opts.platform ? PROVIDER_IDS[opts.platform.toLowerCase()] : undefined;
     if (providerId) {

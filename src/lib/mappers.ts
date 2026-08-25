@@ -48,9 +48,6 @@ function parsePrefs(value: unknown): ProfilePrefs {
     if (Array.isArray(p.avoid_genres)) {
       out.avoid_genres = p.avoid_genres.map(Number).filter((n) => Number.isFinite(n));
     }
-    if (Array.isArray(p.periods)) {
-      out.periods = p.periods.filter((x): x is string => typeof x === "string");
-    }
     if (Array.isArray(p.seeds)) {
       out.seeds = p.seeds
         .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")

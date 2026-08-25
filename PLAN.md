@@ -41,9 +41,12 @@ live over WebSocket). Works solo too (any like = personal watchlist).
 ## Status
 - [x] **V1** — schema, Worker routes, TMDb + shared pool, Durable Object + live WS, swipe UI, solo, movie/TV toggle. Deployed.
 - [x] **V2.1** — live movie/TV toggle, full watch-provider filtering + "where to watch", match transparency.
-- [x] **V2.2** — richer quiz (like/love genres, **genres to avoid**, multi-interval **periods**),
-      persistent solo watchlist, IMDb/RT/Metacritic ratings (OMDb), shareable invite link,
-      swipe gestures + trailer + undo, "New session" fresh deck.
+- [x] **V2.2** — quiz (like/love genres + **genres to avoid**), persistent solo watchlist,
+      IMDb/RT/Metacritic ratings (OMDb), shareable invite link, swipe gestures + trailer + undo,
+      "New session" fresh deck.
+- [x] **V2.3** — **per-user decks**: one shared union pool (both users' tastes + common ground),
+      but ordered per user (each sees their own taste first) → matches stay possible.
+      (Period filter removed to keep it simple.)
 
 ## Roadmap
 **Seeds** — "titles I liked" with autocomplete → TMDb recommendations blended into the pool (next).
