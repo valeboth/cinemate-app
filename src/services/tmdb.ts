@@ -124,12 +124,15 @@ function discoverResultToCard(r: TmdbDiscoverResult, mediaType: MediaType): Deck
 }
 
 export type Era = "recent" | "classic";
+export type Popularity = "gems" | "blockbusters";
 
 export interface DiscoverOptions {
   mediaType: MediaType;
   genreIds?: number[];
   platform?: string | null;
   era?: Era | null;
+  minRating?: number | null;
+  popularity?: Popularity | null;
   pages?: number;
 }
 
@@ -140,15 +143,23 @@ export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<D
   const seen = new Set<number>();
   const dateField = opts.mediaType === "movie" ? "primary_release_date" : "first_air_date";
 
+  // Popularity preference: hidden gems (high rating, fewer votes) vs blockbusters.
+  const sortBy = opts.popularity === "gems" ? "vote_average.desc" : "popularity.desc";
+  const voteCountGte =
+    opts.popularity === "gems" ? "300" : opts.popularity === "blockbusters" ? "1000" : "50";
+
   for (let page = 1; page <= pages; page++) {
     const params: Record<string, string> = {
       language: TMDB_LANG,
       region: TMDB_REGION,
-      sort_by: "popularity.desc",
+      sort_by: sortBy,
       include_adult: "false",
-      "vote_count.gte": "50",
+      "vote_count.gte": voteCountGte,
       page: String(page),
     };
+    if (opts.minRating && opts.minRating > 0) {
+      params["vote_average.gte"] = String(opts.minRating);
+    }
     if (opts.genreIds && opts.genreIds.length > 0) {
       params.with_genres = opts.genreIds.join("|"); // OR across genres
     }

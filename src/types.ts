@@ -26,6 +26,14 @@ export interface User {
   created_at: string;
 }
 
+export type Popularity = "gems" | "blockbusters";
+
+/** Extra quiz answers stored as JSON in profiles.quiz_prefs. */
+export interface QuizPrefs {
+  min_rating?: number; // e.g. 7 → only titles with vote_average >= 7
+  popularity?: Popularity;
+}
+
 /** Taste profile. genre_scores is JSON: { [genreId]: score 0..1 }. */
 export interface Profile {
   user_id: string;
@@ -33,6 +41,7 @@ export interface Profile {
   era_pref: string | null;
   mood_pref: string | null;
   media_type_pref: MediaType | null;
+  quiz_prefs: QuizPrefs;
 }
 
 export interface Room {
