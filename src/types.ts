@@ -18,6 +18,9 @@ export interface Env {
   OVERSEERR_URL: string;
   /** Secret — Overseerr API key (X-Api-Key). Optional; feature inert if unset. */
   OVERSEERR_API_KEY: string;
+  /** Secret — Cloudflare Access service token (optional; if the Overseerr hostname is behind Access). */
+  CF_ACCESS_CLIENT_ID: string;
+  CF_ACCESS_CLIENT_SECRET: string;
 }
 
 export type MediaType = "movie" | "tv";

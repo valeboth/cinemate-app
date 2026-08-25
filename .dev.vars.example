@@ -12,3 +12,6 @@ OMDB_API_KEY=""
 # Must be reachable from the internet (the Worker runs in the cloud). Leave empty to disable.
 OVERSEERR_URL=""
 OVERSEERR_API_KEY=""
+# Only if the Overseerr hostname is behind Cloudflare Access (Zero Trust) — service token.
+CF_ACCESS_CLIENT_ID=""
+CF_ACCESS_CLIENT_SECRET=""

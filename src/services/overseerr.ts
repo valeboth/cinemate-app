@@ -17,6 +17,20 @@ function baseUrl(env: Env): string {
   return env.OVERSEERR_URL.replace(/\/+$/, ""); // trim trailing slash
 }
 
+// Overseerr API key + (optional) Cloudflare Access service token headers.
+function authHeaders(env: Env, extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = {
+    "X-Api-Key": env.OVERSEERR_API_KEY,
+    accept: "application/json",
+    ...extra,
+  };
+  if (env.CF_ACCESS_CLIENT_ID && env.CF_ACCESS_CLIENT_SECRET) {
+    h["CF-Access-Client-Id"] = env.CF_ACCESS_CLIENT_ID;
+    h["CF-Access-Client-Secret"] = env.CF_ACCESS_CLIENT_SECRET;
+  }
+  return h;
+}
+
 interface OverseerrMediaItem {
   tmdbId?: number;
   status?: number; // 2 pending, 3 processing, 4 partially available, 5 available
@@ -39,7 +53,7 @@ export async function getRequestedTmdbIds(env: Env): Promise<Set<number>> {
   try {
     for (let page = 1; page <= MEDIA_PAGES; page++) {
       const url = `${baseUrl(env)}/api/v1/media?take=100&skip=${(page - 1) * 100}&filter=allavailable`;
-      const res = await fetch(url, { headers: { "X-Api-Key": env.OVERSEERR_API_KEY, accept: "application/json" } });
+      const res = await fetch(url, { headers: authHeaders(env) });
       if (!res.ok) break;
       const data = (await res.json()) as OverseerrMediaResponse;
       const results = data.results ?? [];
@@ -74,11 +88,7 @@ export async function createRequest(
     if (mediaType === "tv") body.seasons = "all";
     const res = await fetch(`${baseUrl(env)}/api/v1/request`, {
       method: "POST",
-      headers: {
-        "X-Api-Key": env.OVERSEERR_API_KEY,
-        "content-type": "application/json",
-        accept: "application/json",
-      },
+      headers: authHeaders(env, { "content-type": "application/json" }),
       body: JSON.stringify(body),
     });
     if (!res.ok) {
