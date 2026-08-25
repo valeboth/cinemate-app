@@ -245,6 +245,28 @@ export async function getWatchProviders(
   };
 }
 
+interface TmdbVideosResponse {
+  results?: { site?: string; type?: string; key?: string; official?: boolean }[];
+}
+
+/** YouTube trailer key for a title (Trailer preferred, else Teaser), or null. */
+export async function getTrailerKey(env: Env, mediaType: MediaType, id: number): Promise<string | null> {
+  try {
+    const data = await tmdbFetch<TmdbVideosResponse>(env, `/${mediaType}/${id}/videos`, {
+      language: TMDB_LANG,
+    });
+    const yt = (data.results ?? []).filter((v) => v.site === "YouTube" && v.key);
+    const trailer =
+      yt.find((v) => v.type === "Trailer" && v.official) ||
+      yt.find((v) => v.type === "Trailer") ||
+      yt.find((v) => v.type === "Teaser") ||
+      yt[0];
+    return trailer?.key ?? null;
+  } catch {
+    return null;
+  }
+}
+
 interface TmdbExternalIds {
   imdb_id?: string | null;
 }

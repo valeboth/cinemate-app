@@ -37,7 +37,6 @@
         <!-- ── Lobby ──────────────────────────────────────────────── -->
         <div class="screen hidden" id="screen-lobby">
           <h2>What now?</h2>
-
           <div class="card-box">
             <h3>Create a room</h3>
             <div class="toggle-row">
@@ -59,13 +58,11 @@
             <label class="check-row"><input type="checkbox" id="solo-check" /> Solo mode (just me)</label>
             <button id="create-room-btn" class="btn btn-primary mt">Create</button>
           </div>
-
           <div class="card-box mt">
             <h3>Join with a code</h3>
             <input id="join-code-input" class="input" type="text" placeholder="CODE (6 chars)" maxlength="6" />
             <button id="join-room-btn" class="btn mt">Join</button>
           </div>
-
           <button id="watchlist-btn" class="btn-link mt">My watchlist</button>
           <p id="lobby-error" class="error"></p>
         </div>
@@ -88,13 +85,16 @@
           </div>
 
           <div id="deck-area" class="deck-area">
-            <div id="card" class="movie-card hidden">
-              <div class="poster" id="card-poster"></div>
-              <div class="card-info">
+            <div id="card" class="swipe-card hidden">
+              <div class="poster-full" id="card-poster"></div>
+              <div class="stamp stamp-like" id="stamp-like">LIKE</div>
+              <div class="stamp stamp-nope" id="stamp-nope">NOPE</div>
+              <div class="card-shade">
                 <h3 id="card-title"></h3>
-                <p id="card-meta" class="muted"></p>
+                <p id="card-meta" class="card-sub"></p>
                 <p id="card-rating" class="rating-row"></p>
                 <p id="card-overview" class="overview"></p>
+                <button id="trailer-btn" class="trailer-btn hidden">▶ Trailer</button>
               </div>
             </div>
             <p id="deck-empty" class="muted hidden">That's the whole deck! 🎉 Check your matches.</p>
@@ -102,6 +102,7 @@
           </div>
 
           <div class="swipe-actions">
+            <button id="undo-btn" class="round-btn undo" aria-label="Undo" disabled>↺</button>
             <button id="dislike-btn" class="round-btn dislike" aria-label="No">✕</button>
             <button id="like-btn" class="round-btn like" aria-label="Yes">♥</button>
           </div>
@@ -110,7 +111,7 @@
 
         <!-- ── Match ──────────────────────────────────────────────── -->
         <div class="screen hidden" id="screen-match">
-          <h2 class="match-title">🎉 Match!</h2>
+          <h2 class="match-title">It's a match! 🎉</h2>
           <div id="match-poster" class="poster big"></div>
           <h3 id="match-name"></h3>
           <p id="match-meta" class="muted"></p>
@@ -142,6 +143,13 @@
         <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">themoviedb.org</a>
       </footer>
     </main>
+
+    <!-- Trailer overlay -->
+    <div id="trailer-overlay" class="overlay hidden">
+      <button id="trailer-close" class="overlay-close" aria-label="Close">✕</button>
+      <div id="trailer-frame" class="trailer-frame"></div>
+    </div>
+
     <script src="./app.js"></script>
   </body>
 </html>

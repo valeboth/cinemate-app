@@ -1,7 +1,7 @@
 // Cinemate frontend — vanilla JS (no framework in V1).
 
 // ── API config ─────────────────────────────────────────────────────────────
-// Same-origin: the Worker serves both the static assets (Workers Static Assets) and /api.
+// Same-origin: the Worker serves both the static assets and /api.
 const API_BASE = "";
 const TMDB_IMG = "https://image.tmdb.org/t/p/w500";
 const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
@@ -11,38 +11,40 @@ function wsUrl(path) {
   return `${proto}//${location.host}${path}`;
 }
 
-// ── TMDb genres (quiz subset) ───────────────────────────────────────────────
+// ── Genres ──────────────────────────────────────────────────────────────────
+// Quiz subset (with ids).
 const GENRES = [
-  { id: 28, name: "Action" },
-  { id: 12, name: "Adventure" },
-  { id: 35, name: "Comedy" },
-  { id: 18, name: "Drama" },
-  { id: 27, name: "Horror" },
-  { id: 878, name: "Sci-Fi" },
-  { id: 53, name: "Thriller" },
-  { id: 10749, name: "Romance" },
-  { id: 16, name: "Animation" },
-  { id: 9648, name: "Mystery" },
-  { id: 14, name: "Fantasy" },
-  { id: 80, name: "Crime" },
+  { id: 28, name: "Action" }, { id: 12, name: "Adventure" }, { id: 35, name: "Comedy" },
+  { id: 18, name: "Drama" }, { id: 27, name: "Horror" }, { id: 878, name: "Sci-Fi" },
+  { id: 53, name: "Thriller" }, { id: 10749, name: "Romance" }, { id: 16, name: "Animation" },
+  { id: 9648, name: "Mystery" }, { id: 14, name: "Fantasy" }, { id: 80, name: "Crime" },
 ];
-
-// Genre score by level: 1 = like, 2 = love.
+// Full id → name map (movie ∪ tv) for card labels.
+const GENRE_NAMES = {
+  28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+  99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History",
+  27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance", 878: "Sci-Fi",
+  10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western",
+  10759: "Action & Adventure", 10762: "Kids", 10763: "News", 10764: "Reality",
+  10765: "Sci-Fi & Fantasy", 10766: "Soap", 10767: "Talk", 10768: "War & Politics",
+};
 const LEVEL_SCORE = { 1: 0.6, 2: 1.0 };
+const SWIPE_THRESHOLD = 90;
 
 // ── App state ───────────────────────────────────────────────────────────────
 const state = {
   userId: localStorage.getItem("cinemate_user_id") || null,
   username: localStorage.getItem("cinemate_username") || null,
-  genreLevels: {}, // genreId -> 1 (like) | 2 (love)
-  era: "", // "" | "recent" | "classic"
+  genreLevels: {},
+  era: "",
   mediaType: "movie",
   room: null,
   soloMode: false,
   deck: [],
   deckIndex: 0,
   ws: null,
-  pendingCode: null, // invite code from ?code= to auto-join after onboarding
+  pendingCode: null,
+  lastSwiped: null, // { card } for undo
 };
 
 // ── API helper ──────────────────────────────────────────────────────────────
@@ -56,7 +58,7 @@ async function api(path, opts = {}) {
   return data;
 }
 
-// ── Screen navigation ─────────────────────────────────────────────────────────
+// ── Screens ───────────────────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.add("hidden"));
   document.getElementById(id).classList.remove("hidden");
@@ -72,10 +74,9 @@ function toast(msg) {
 }
 
 function updateUserBadge() {
-  const badge = $("user-badge");
   if (state.username) {
-    badge.textContent = "👤 " + state.username;
-    badge.classList.remove("hidden");
+    $("user-badge").textContent = "👤 " + state.username;
+    $("user-badge").classList.remove("hidden");
   }
 }
 
@@ -86,7 +87,6 @@ function renderGenreChips() {
   GENRES.forEach((g) => {
     const chip = document.createElement("button");
     chip.className = "chip";
-    chip.dataset.id = g.id;
     chip.textContent = g.name;
     chip.onclick = () => {
       const level = (state.genreLevels[g.id] || 0) + 1;
@@ -124,10 +124,7 @@ async function handleOnboarding() {
     return;
   }
   try {
-    const user = await api("/api/users", {
-      method: "POST",
-      body: JSON.stringify({ username }),
-    });
+    const user = await api("/api/users", { method: "POST", body: JSON.stringify({ username }) });
     state.userId = user.id;
     state.username = user.username;
     localStorage.setItem("cinemate_user_id", user.id);
@@ -139,11 +136,7 @@ async function handleOnboarding() {
     }
     await api("/api/profile/quiz", {
       method: "POST",
-      body: JSON.stringify({
-        user_id: user.id,
-        genre_scores: genreScores,
-        era_pref: state.era || null,
-      }),
+      body: JSON.stringify({ user_id: user.id, genre_scores: genreScores, era_pref: state.era || null }),
     });
 
     updateUserBadge();
@@ -173,20 +166,18 @@ function setupMediaToggle() {
 async function handleCreateRoom() {
   const err = $("lobby-error");
   err.textContent = "";
-  const solo = $("solo-check").checked;
-  const platform = $("platform-select").value || null;
   try {
     const room = await api("/api/rooms", {
       method: "POST",
       body: JSON.stringify({
         user_id: state.userId,
         media_type: state.mediaType,
-        platform_filter: platform,
-        solo,
+        platform_filter: $("platform-select").value || null,
+        solo: $("solo-check").checked,
       }),
     });
     state.room = room;
-    state.soloMode = solo;
+    state.soloMode = $("solo-check").checked;
     enterSwipe();
   } catch (e) {
     err.textContent = "Error: " + e.message;
@@ -220,21 +211,11 @@ async function enterSwipe() {
   showScreen("screen-swipe");
   $("room-code-label").textContent = state.soloMode ? "SOLO" : state.room.join_code;
   $("invite-bar").classList.toggle("hidden", state.soloMode);
+  state.lastSwiped = null;
+  updateUndo();
   syncMediaToggle();
   connectWs();
   await loadDeck();
-}
-
-function inviteLink() {
-  return `${location.origin}/join?code=${state.room.join_code}`;
-}
-async function copyText(text, label) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast(label + " copied");
-  } catch {
-    toast("Copy failed");
-  }
 }
 
 async function loadDeck() {
@@ -246,6 +227,8 @@ async function loadDeck() {
     const res = await api(`/api/rooms/${state.room.id}/deck?user_id=${encodeURIComponent(state.userId)}`);
     state.deck = res.cards || [];
     state.deckIndex = 0;
+    state.lastSwiped = null;
+    updateUndo();
     $("deck-loading").classList.add("hidden");
     renderCard();
   } catch (e) {
@@ -259,7 +242,6 @@ function syncMediaToggle() {
   });
 }
 
-// Live movie/TV toggle: change media_type on the room → the pool regenerates.
 async function toggleMedia(media) {
   if (media === state.mediaType) return;
   try {
@@ -276,48 +258,53 @@ async function toggleMedia(media) {
   }
 }
 
+function resetCardTransform() {
+  const el = $("card");
+  el.style.transition = "none";
+  el.style.transform = "";
+  $("stamp-like").style.opacity = 0;
+  $("stamp-nope").style.opacity = 0;
+}
+
 function renderCard() {
   const card = state.deck[state.deckIndex];
+  const el = $("card");
+  resetCardTransform();
   if (!card) {
-    $("card").classList.add("hidden");
+    el.classList.add("hidden");
     $("deck-empty").classList.remove("hidden");
     return;
   }
   $("deck-empty").classList.add("hidden");
-  $("card").classList.remove("hidden");
-  $("card-poster").style.backgroundImage = card.poster_path
-    ? `url(${TMDB_IMG}${card.poster_path})`
-    : "none";
+  el.classList.remove("hidden");
+  $("card-poster").style.backgroundImage = card.poster_path ? `url(${TMDB_IMG}${card.poster_path})` : "none";
   $("card-title").textContent = card.title;
   const bits = [];
   if (card.release_year) bits.push(card.release_year);
-  if (card.vote_average) bits.push("⭐ " + card.vote_average.toFixed(1));
+  const gnames = (card.genres || []).map((g) => GENRE_NAMES[g]).filter(Boolean).slice(0, 2);
+  if (gnames.length) bits.push(gnames.join(", "));
   $("card-meta").textContent = bits.join("  ·  ");
-  $("card-overview").textContent = card.overview || "(no description)";
+  $("card-overview").textContent = card.overview || "";
+  $("trailer-btn").classList.remove("hidden");
+  $("trailer-btn").onclick = () => openTrailer(card.tmdb_id);
   renderRatings(card.tmdb_id, "card-rating");
 }
 
-// Best-effort OMDb ratings (IMDb / RT / Metacritic). Silent on failure.
-async function renderRatings(tmdbId, elId) {
-  const el = $(elId);
-  el.textContent = "";
-  try {
-    const res = await api(`/api/rooms/${state.room.id}/rating/${tmdbId}`);
-    const r = res.ratings || {};
-    const parts = [];
-    if (r.imdb_rating) parts.push(`IMDb ${r.imdb_rating}`);
-    if (r.rotten_tomatoes) parts.push(`🍅 ${r.rotten_tomatoes}`);
-    if (r.metacritic) parts.push(`MC ${r.metacritic}`);
-    el.textContent = parts.join("  ·  ");
-  } catch {
-    // best-effort — leave empty
-  }
+// Fling the card off-screen, then register the swipe.
+function flingAndSwipe(direction) {
+  const el = $("card");
+  const off = direction === "like" ? window.innerWidth + 200 : -(window.innerWidth + 200);
+  el.style.transition = "transform 0.35s ease-out";
+  el.style.transform = `translate(${off}px, -40px) rotate(${direction === "like" ? 22 : -22}deg)`;
+  setTimeout(() => swipe(direction), 300);
 }
 
 async function swipe(direction) {
   const card = state.deck[state.deckIndex];
   if (!card) return;
+  state.lastSwiped = { card };
   state.deckIndex++;
+  updateUndo();
   renderCard();
   try {
     const res = await api(`/api/rooms/${state.room.id}/swipe`, {
@@ -325,20 +312,95 @@ async function swipe(direction) {
       body: JSON.stringify({ user_id: state.userId, tmdb_id: card.tmdb_id, direction }),
     });
     if (res.matched && res.is_new_match) {
-      if (state.soloMode) {
-        toast("💾 Saved to watchlist");
-      } else {
-        showMatch(card, res.match_reason);
-      }
+      if (state.soloMode) toast("💾 Saved to watchlist");
+      else showMatch(card, res.match_reason);
     }
   } catch (e) {
     console.error("swipe error", e);
   }
 }
 
+function updateUndo() {
+  $("undo-btn").disabled = !state.lastSwiped;
+}
+
+async function undo() {
+  if (!state.lastSwiped) return;
+  const { card } = state.lastSwiped;
+  state.lastSwiped = null;
+  state.deckIndex = Math.max(0, state.deckIndex - 1);
+  updateUndo();
+  renderCard();
+  try {
+    await api(`/api/rooms/${state.room.id}/swipe`, {
+      method: "DELETE",
+      body: JSON.stringify({ user_id: state.userId, tmdb_id: card.tmdb_id }),
+    });
+  } catch (e) {
+    console.error("undo error", e);
+  }
+}
+
+// Pointer-drag gestures (bound once to the card element).
+function setupGestures() {
+  const el = $("card");
+  let drag = null;
+  el.addEventListener("pointerdown", (e) => {
+    if (el.classList.contains("hidden") || e.target.closest("#trailer-btn")) return;
+    drag = { x: e.clientX, y: e.clientY, dx: 0 };
+    el.setPointerCapture(e.pointerId);
+    el.style.transition = "none";
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    drag.dx = e.clientX - drag.x;
+    const dy = e.clientY - drag.y;
+    const rot = Math.max(-15, Math.min(15, drag.dx / 12));
+    el.style.transform = `translate(${drag.dx}px, ${dy}px) rotate(${rot}deg)`;
+    const p = Math.min(1, Math.abs(drag.dx) / SWIPE_THRESHOLD);
+    $("stamp-like").style.opacity = drag.dx > 0 ? p : 0;
+    $("stamp-nope").style.opacity = drag.dx < 0 ? p : 0;
+  });
+  const end = () => {
+    if (!drag) return;
+    const dx = drag.dx;
+    drag = null;
+    if (Math.abs(dx) > SWIPE_THRESHOLD) {
+      flingAndSwipe(dx > 0 ? "like" : "dislike");
+    } else {
+      el.style.transition = "transform 0.25s ease";
+      el.style.transform = "";
+      $("stamp-like").style.opacity = 0;
+      $("stamp-nope").style.opacity = 0;
+    }
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+}
+
+// ── Trailer ───────────────────────────────────────────────────────────────────
+async function openTrailer(tmdbId) {
+  try {
+    const res = await api(`/api/rooms/${state.room.id}/trailer/${tmdbId}`);
+    if (!res.youtube_key) {
+      toast("No trailer available");
+      return;
+    }
+    $("trailer-frame").innerHTML =
+      `<iframe src="https://www.youtube.com/embed/${res.youtube_key}?autoplay=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+    $("trailer-overlay").classList.remove("hidden");
+  } catch {
+    toast("No trailer available");
+  }
+}
+function closeTrailer() {
+  $("trailer-frame").innerHTML = "";
+  $("trailer-overlay").classList.add("hidden");
+}
+
 // ── WebSocket (live) ────────────────────────────────────────────────────────
 function connectWs() {
-  if (state.soloMode) return; // no live in solo
+  if (state.soloMode) return;
   closeWs();
   const ws = new WebSocket(wsUrl(`/api/rooms/${state.room.id}/ws`));
   state.ws = ws;
@@ -352,15 +414,10 @@ function connectWs() {
       return;
     }
     if (msg.type === "match") {
-      const card =
-        msg.card || state.deck.find((c) => c.tmdb_id === msg.tmdb_id) || {
-          tmdb_id: msg.tmdb_id,
-          title: "Match!",
-          poster_path: null,
-        };
+      const card = msg.card || state.deck.find((c) => c.tmdb_id === msg.tmdb_id) ||
+        { tmdb_id: msg.tmdb_id, title: "Match!", poster_path: null };
       showMatch(card, msg.reason);
     } else if (msg.type === "deck_reset") {
-      // the other user switched movie/TV → sync and reload the deck
       if (msg.media_type) {
         state.mediaType = msg.media_type;
         if (state.room) state.room.media_type = msg.media_type;
@@ -370,7 +427,6 @@ function connectWs() {
     }
   });
 }
-
 function closeWs() {
   if (state.ws) {
     try {
@@ -384,9 +440,7 @@ function closeWs() {
 
 // ── Match screen ────────────────────────────────────────────────────────────
 function showMatch(card, reason) {
-  $("match-poster").style.backgroundImage = card.poster_path
-    ? `url(${TMDB_IMG}${card.poster_path})`
-    : "none";
+  $("match-poster").style.backgroundImage = card.poster_path ? `url(${TMDB_IMG}${card.poster_path})` : "none";
   $("match-name").textContent = card.title || "Match!";
   const bits = [];
   if (card.release_year) bits.push(card.release_year);
@@ -400,7 +454,22 @@ function showMatch(card, reason) {
   showScreen("screen-match");
 }
 
-// "Where to watch" — RO watch providers (streaming first).
+async function renderRatings(tmdbId, elId) {
+  const el = $(elId);
+  el.textContent = "";
+  try {
+    const res = await api(`/api/rooms/${state.room.id}/rating/${tmdbId}`);
+    const r = res.ratings || {};
+    const parts = [];
+    if (r.imdb_rating) parts.push(`IMDb ${r.imdb_rating}`);
+    if (r.rotten_tomatoes) parts.push(`🍅 ${r.rotten_tomatoes}`);
+    if (r.metacritic) parts.push(`MC ${r.metacritic}`);
+    el.textContent = parts.join("   ");
+  } catch {
+    // best-effort
+  }
+}
+
 async function renderProviders(tmdbId) {
   const box = $("match-providers");
   box.innerHTML = "";
@@ -435,7 +504,7 @@ async function renderProviders(tmdbId) {
   }
 }
 
-// ── Card lists (matches + watchlist) ──────────────────────────────────────────
+// ── Card lists ──────────────────────────────────────────────────────────────
 function renderCardList(container, items, emptyText) {
   container.innerHTML = "";
   if (!items.length) {
@@ -491,19 +560,34 @@ async function showWatchlist() {
   }
 }
 
+// ── Invite ────────────────────────────────────────────────────────────────────
+function inviteLink() {
+  return `${location.origin}/join?code=${state.room.join_code}`;
+}
+async function copyText(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(label + " copied");
+  } catch {
+    toast("Copy failed");
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 function init() {
   renderGenreChips();
   setupEraToggle();
   setupMediaToggle();
+  setupGestures();
 
   $("onboarding-continue").onclick = handleOnboarding;
   $("create-room-btn").onclick = handleCreateRoom;
   $("join-room-btn").onclick = handleJoinRoom;
   $("watchlist-btn").onclick = showWatchlist;
   $("watchlist-back-btn").onclick = () => showScreen("screen-lobby");
-  $("like-btn").onclick = () => swipe("like");
-  $("dislike-btn").onclick = () => swipe("dislike");
+  $("like-btn").onclick = () => flingAndSwipe("like");
+  $("dislike-btn").onclick = () => flingAndSwipe("dislike");
+  $("undo-btn").onclick = undo;
   document.querySelectorAll("#swipe-media-toggle .toggle-opt").forEach((b) => {
     b.onclick = () => toggleMedia(b.dataset.media);
   });
@@ -512,10 +596,12 @@ function init() {
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");
   $("copy-code-btn").onclick = () => copyText(state.room.join_code, "Code");
   $("copy-link-btn").onclick = () => copyText(inviteLink(), "Link");
+  $("trailer-close").onclick = closeTrailer;
+  $("trailer-overlay").onclick = (e) => {
+    if (e.target === $("trailer-overlay")) closeTrailer();
+  };
 
-  // Invite link: /join?code=ABC123 (or /?code=...) → pre-fill and auto-join.
   const pendingCode = (new URLSearchParams(location.search).get("code") || "").trim().toUpperCase();
-
   if (state.userId && state.username) {
     updateUserBadge();
     if (pendingCode) {
