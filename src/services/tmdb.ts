@@ -287,3 +287,92 @@ export async function getGenreMap(env: Env, mediaType: MediaType): Promise<Recor
   for (const g of data.genres ?? []) map[g.id] = g.name;
   return map;
 }
+
+interface TmdbSearchResult {
+  id: number;
+  media_type?: string;
+  title?: string;
+  name?: string;
+  release_date?: string;
+  first_air_date?: string;
+  poster_path?: string | null;
+}
+interface TmdbSearchResponse {
+  results?: TmdbSearchResult[];
+}
+
+export interface SearchHit {
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  year: number | null;
+  poster_path: string | null;
+}
+
+/** Autocomplete search (cached via tmdbFetch's KV). media_type omitted → /search/multi. */
+export async function searchTitles(
+  env: Env,
+  query: string,
+  mediaType?: MediaType,
+): Promise<SearchHit[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const path =
+    mediaType === "movie" ? "/search/movie" : mediaType === "tv" ? "/search/tv" : "/search/multi";
+  const data = await tmdbFetch<TmdbSearchResponse>(env, path, {
+    language: TMDB_LANG,
+    query: q,
+    include_adult: "false",
+    page: "1",
+  });
+  const hits: SearchHit[] = [];
+  for (const r of data.results ?? []) {
+    const mt: MediaType | null =
+      mediaType ?? (r.media_type === "movie" ? "movie" : r.media_type === "tv" ? "tv" : null);
+    if (!mt) continue; // skip people/other from /search/multi
+    const title = (mt === "movie" ? r.title : r.name) ?? "";
+    if (!title) continue;
+    hits.push({
+      tmdb_id: r.id,
+      media_type: mt,
+      title,
+      year: dateToYear(mt === "movie" ? r.release_date : r.first_air_date),
+      poster_path: r.poster_path ?? null,
+    });
+    if (hits.length >= 8) break;
+  }
+  return hits;
+}
+
+/** Recommendations for a seed title (falls back to /similar if few). Best-effort. */
+export async function getRecommendations(
+  env: Env,
+  mediaType: MediaType,
+  id: number,
+): Promise<DeckCard[]> {
+  const cards: DeckCard[] = [];
+  const seen = new Set<number>();
+  const add = (data: TmdbDiscoverResponse) => {
+    for (const r of data.results ?? []) {
+      if (!seen.has(r.id)) {
+        seen.add(r.id);
+        cards.push(discoverResultToCard(r, mediaType));
+      }
+    }
+  };
+  try {
+    add(await tmdbFetch<TmdbDiscoverResponse>(env, `/${mediaType}/${id}/recommendations`, {
+      language: TMDB_LANG,
+      page: "1",
+    }));
+    if (cards.length < 10) {
+      add(await tmdbFetch<TmdbDiscoverResponse>(env, `/${mediaType}/${id}/similar`, {
+        language: TMDB_LANG,
+        page: "1",
+      }));
+    }
+  } catch {
+    // best-effort
+  }
+  return cards;
+}
