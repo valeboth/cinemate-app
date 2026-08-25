@@ -148,9 +148,13 @@ export async function getOrCreateDeck(env: Env, room: Room): Promise<DeckResult>
 
   let cards = await generatePool(env, room, genreIds, avoidGenres, periods);
 
-  // Fallback: filters returned too few → drop liked-genres/periods/platform,
-  // but ALWAYS keep avoid_genres (a "no" must always hold).
-  if (cards.length < MIN_DECK) {
+  // Too few → first relax liked-genres/platform but KEEP the periods (never show
+  // out-of-period years) and avoid_genres (a "no" must always hold).
+  if (cards.length < MIN_DECK && genreIds.length > 0) {
+    cards = await generatePool(env, room, [], avoidGenres, periods);
+  }
+  // Only when no period is set do the broad fallback (drop everything except avoid).
+  if (cards.length < MIN_DECK && periods.length === 0) {
     cards = await discoverTitles(env, { mediaType: room.media_type, avoidGenres, pages: 2 });
   }
 
