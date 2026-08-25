@@ -14,6 +14,10 @@ export interface Env {
   TMDB_API_KEY: string;
   /** Secret — the OMDb key (enrichment: IMDb/RT/Metacritic ratings). Best-effort. */
   OMDB_API_KEY: string;
+  /** Secret — Overseerr base URL (e.g. https://overseerr.example.com). Optional. */
+  OVERSEERR_URL: string;
+  /** Secret — Overseerr API key (X-Api-Key). Optional; feature inert if unset. */
+  OVERSEERR_API_KEY: string;
 }
 
 export type MediaType = "movie" | "tv";

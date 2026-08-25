@@ -4,3 +4,11 @@
 # Get a free TMDb key at https://www.themoviedb.org/settings/api
 # Either an API Key (v3 auth) or a Read Access Token (v4) works. See src/services/tmdb.ts.
 TMDB_API_KEY="your_key_here"
+
+# Optional — OMDb (IMDb/RT/Metacritic ratings). Get one at http://www.omdbapi.com/apikey.aspx
+OMDB_API_KEY=""
+
+# Optional — Overseerr integration (exclude requested/available + "Add to Overseerr" on match).
+# Must be reachable from the internet (the Worker runs in the cloud). Leave empty to disable.
+OVERSEERR_URL=""
+OVERSEERR_API_KEY=""

@@ -6,6 +6,7 @@ import { mapRoom } from "../lib/mappers";
 import { getDeckForUser, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
 import { getWatchProviders, getImdbId, getTrailerKey } from "../services/tmdb";
 import { getOmdbRatings } from "../services/omdb";
+import { createRequest } from "../services/overseerr";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
@@ -392,6 +393,30 @@ rooms.get("/:id/trailer/:tmdbId", async (c) => {
 
   const key = await getTrailerKey(c.env, mediaType, tmdbId);
   return c.json({ tmdb_id: tmdbId, youtube_key: key }, 200);
+});
+
+// POST /api/rooms/:id/request — request a title in Overseerr ("Add to Overseerr").
+// Body: { user_id, tmdb_id }
+rooms.post("/:id/request", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  const userId = typeof body?.user_id === "string" ? body.user_id : "";
+  const tmdbId = Number(body?.tmdb_id);
+  if (!userId) return c.json({ error: "user_id_required" }, 400);
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: "tmdb_id_invalid" }, 400);
+
+  const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const room = mapRoom(row);
+  if (userId !== room.user_a_id && userId !== room.user_b_id) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  const result = await createRequest(c.env, room.media_type, tmdbId);
+  if (!result.ok) return c.json({ error: result.error ?? "request_failed" }, 502);
+  return c.json({ ok: true, tmdb_id: tmdbId }, 200);
 });
 
 // POST /api/rooms/:id/new-session — fresh deck: reset the pool + clear the room's swipes.

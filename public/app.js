@@ -609,7 +609,9 @@ function closeWs() {
 }
 
 // ── Match screen ────────────────────────────────────────────────────────────
+let currentMatchCard = null;
 function showMatch(card, reason) {
+  currentMatchCard = card;
   $("match-poster").style.backgroundImage = card.poster_path ? `url(${TMDB_IMG}${card.poster_path})` : "none";
   $("match-name").textContent = card.title || "Match!";
   const bits = [];
@@ -622,6 +624,23 @@ function showMatch(card, reason) {
   renderRatings(card.tmdb_id, "match-rating");
   renderProviders(card.tmdb_id);
   showScreen("screen-match");
+}
+
+async function addToOverseerr() {
+  if (!currentMatchCard) return;
+  const btn = $("add-overseerr-btn");
+  btn.disabled = true;
+  try {
+    await api(`/api/rooms/${state.room.id}/request`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: state.userId, tmdb_id: currentMatchCard.tmdb_id }),
+    });
+    toast("✅ Requested in Overseerr");
+  } catch (e) {
+    toast(e.message === "not_configured" ? "Overseerr not set up" : "Overseerr request failed");
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function renderRatings(tmdbId, elId) {
@@ -798,6 +817,7 @@ function init() {
   $("new-session-btn").onclick = newSession;
   $("matches-back-btn").onclick = () => showScreen("screen-swipe");
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");
+  $("add-overseerr-btn").onclick = addToOverseerr;
   $("copy-link-btn").onclick = () => copyText(inviteLink(), "Invite link");
   $("user-badge").onclick = showProfile;
   $("edit-prefs-btn").onclick = openEditPrefs;
