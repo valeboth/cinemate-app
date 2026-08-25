@@ -16,9 +16,11 @@
       <section id="content">
         <!-- ── Onboarding ─────────────────────────────────────────── -->
         <div class="screen" id="screen-onboarding">
-          <h2>Welcome 👋</h2>
-          <p class="muted">What's your name?</p>
-          <input id="username-input" class="input" type="text" placeholder="your name" maxlength="40" />
+          <h2 id="onboarding-title">Welcome 👋</h2>
+          <div id="name-field">
+            <p class="muted">What's your name?</p>
+            <input id="username-input" class="input" type="text" placeholder="your name" maxlength="40" />
+          </div>
 
           <p class="muted mt">Which genres do you like? <span class="hint">(tap once = like, twice = love)</span></p>
           <div id="genre-chips" class="chips"></div>
@@ -143,8 +145,9 @@
           <h2>Profile</h2>
           <div class="card-box">
             <p id="profile-name" class="muted"></p>
-            <p class="muted">Starting over clears your data on this device and re-runs the quiz.</p>
-            <button id="reset-btn" class="btn btn-primary mt">Start over (clear my data)</button>
+            <button id="edit-prefs-btn" class="btn btn-primary">Edit preferences</button>
+            <p class="muted mt">Starting over clears your data on this device and re-runs the quiz.</p>
+            <button id="reset-btn" class="btn mt">Start over (clear my data)</button>
           </div>
           <button id="profile-back-btn" class="btn-link mt">Back</button>
         </div>

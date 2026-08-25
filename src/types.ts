@@ -29,6 +29,7 @@ export interface User {
 export interface SeedTitle {
   tmdb_id: number;
   media_type: MediaType;
+  title?: string; // kept for display when editing preferences
 }
 
 /** Quiz preferences stored as JSON in profiles.prefs. Each is optional (empty = no filter). */

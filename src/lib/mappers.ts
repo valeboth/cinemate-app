@@ -1,6 +1,6 @@
 // Map D1 rows (Record<string, unknown>) → application types.
 
-import type { MediaType, Profile, ProfilePrefs, Room, RoomStatus, SeedTitle } from "../types";
+import type { MediaType, Profile, ProfilePrefs, Room, RoomStatus } from "../types";
 
 function parseJsonObject(value: unknown): Record<string, number> {
   if (typeof value !== "string") return {};
@@ -53,9 +53,10 @@ function parsePrefs(value: unknown): ProfilePrefs {
         .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
         .map((s) => ({
           tmdb_id: Number(s.tmdb_id),
-          media_type: s.media_type === "tv" ? "tv" : "movie",
+          media_type: s.media_type === "tv" ? ("tv" as const) : ("movie" as const),
+          title: typeof s.title === "string" ? s.title : undefined,
         }))
-        .filter((s): s is SeedTitle => Number.isFinite(s.tmdb_id) && s.tmdb_id > 0);
+        .filter((s) => Number.isFinite(s.tmdb_id) && s.tmdb_id > 0);
     }
     return out;
   } catch {

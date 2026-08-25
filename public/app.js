@@ -40,6 +40,7 @@ const state = {
   genreLevels: {},
   avoidGenres: new Set(),
   seeds: [], // [{ tmdb_id, media_type, title }]
+  editMode: false, // editing an existing profile (vs. first-time onboarding)
   mediaType: "movie",
   room: null,
   soloMode: false,
@@ -90,18 +91,20 @@ function renderGenreChips() {
   GENRES.forEach((g) => {
     const chip = document.createElement("button");
     chip.className = "chip";
-    chip.textContent = g.name;
+    const paint = (level) => {
+      chip.classList.toggle("like", level === 1);
+      chip.classList.toggle("love", level === 2);
+      chip.textContent = g.name + (level === 2 ? " ♥♥" : level === 1 ? " ♥" : "");
+    };
+    paint(state.genreLevels[g.id] || 0); // reflect current state (for edit prefill)
     chip.onclick = () => {
       const level = (state.genreLevels[g.id] || 0) + 1;
       if (level > 2) {
         delete state.genreLevels[g.id];
-        chip.classList.remove("like", "love");
-        chip.textContent = g.name;
+        paint(0);
       } else {
         state.genreLevels[g.id] = level;
-        chip.classList.toggle("like", level === 1);
-        chip.classList.toggle("love", level === 2);
-        chip.textContent = g.name + (level === 2 ? " ♥♥" : " ♥");
+        paint(level);
       }
     };
     box.appendChild(chip);
@@ -116,6 +119,7 @@ function renderAvoidChips() {
     const chip = document.createElement("button");
     chip.className = "chip";
     chip.textContent = g.name;
+    chip.classList.toggle("avoid", state.avoidGenres.has(g.id)); // reflect state (edit prefill)
     chip.onclick = () => {
       if (state.avoidGenres.has(g.id)) {
         state.avoidGenres.delete(g.id);
@@ -217,17 +221,20 @@ function renderSeedChips() {
 async function handleOnboarding() {
   const err = $("onboarding-error");
   err.textContent = "";
-  const username = $("username-input").value.trim();
-  if (!username) {
-    err.textContent = "Please enter a name.";
-    return;
-  }
   try {
-    const user = await api("/api/users", { method: "POST", body: JSON.stringify({ username }) });
-    state.userId = user.id;
-    state.username = user.username;
-    localStorage.setItem("cinemate_user_id", user.id);
-    localStorage.setItem("cinemate_username", user.username);
+    // First-time onboarding creates the user; edit mode reuses the current one.
+    if (!state.editMode) {
+      const username = $("username-input").value.trim();
+      if (!username) {
+        err.textContent = "Please enter a name.";
+        return;
+      }
+      const user = await api("/api/users", { method: "POST", body: JSON.stringify({ username }) });
+      state.userId = user.id;
+      state.username = user.username;
+      localStorage.setItem("cinemate_user_id", user.id);
+      localStorage.setItem("cinemate_username", user.username);
+    }
 
     const genreScores = {};
     for (const [id, level] of Object.entries(state.genreLevels)) {
@@ -236,12 +243,19 @@ async function handleOnboarding() {
     await api("/api/profile/quiz", {
       method: "POST",
       body: JSON.stringify({
-        user_id: user.id,
+        user_id: state.userId,
         genre_scores: genreScores,
         avoid_genres: [...state.avoidGenres],
-        seeds: state.seeds.map((s) => ({ tmdb_id: s.tmdb_id, media_type: s.media_type })),
+        seeds: state.seeds.map((s) => ({ tmdb_id: s.tmdb_id, media_type: s.media_type, title: s.title })),
       }),
     });
+
+    if (state.editMode) {
+      exitEditMode();
+      toast("Preferences saved");
+      showScreen("screen-lobby");
+      return;
+    }
 
     updateUserBadge();
     if (state.pendingCode) {
@@ -254,6 +268,44 @@ async function handleOnboarding() {
   } catch (e) {
     err.textContent = "Error: " + e.message;
   }
+}
+
+// Open the quiz pre-filled with the current profile, to edit without a full reset.
+async function openEditPrefs() {
+  try {
+    const p = await api(`/api/profile/${state.userId}`);
+    state.genreLevels = {};
+    for (const [id, score] of Object.entries(p.genre_scores || {})) {
+      state.genreLevels[id] = Number(score) >= 0.9 ? 2 : 1;
+    }
+    state.avoidGenres = new Set((p.prefs?.avoid_genres || []).map(Number));
+    state.seeds = (p.prefs?.seeds || []).map((s) => ({
+      tmdb_id: s.tmdb_id,
+      media_type: s.media_type,
+      title: s.title || `#${s.tmdb_id}`,
+    }));
+  } catch {
+    state.genreLevels = {};
+    state.avoidGenres = new Set();
+    state.seeds = [];
+  }
+  state.editMode = true;
+  $("name-field").classList.add("hidden");
+  $("onboarding-title").textContent = "Edit preferences";
+  $("onboarding-continue").textContent = "Save";
+  renderGenreChips();
+  renderAvoidChips();
+  renderSeedChips();
+  hideSuggestions();
+  $("onboarding-error").textContent = "";
+  showScreen("screen-onboarding");
+}
+
+function exitEditMode() {
+  state.editMode = false;
+  $("name-field").classList.remove("hidden");
+  $("onboarding-title").textContent = "Welcome 👋";
+  $("onboarding-continue").textContent = "Continue";
 }
 
 // ── Lobby ────────────────────────────────────────────────────────────────────
@@ -690,6 +742,7 @@ function resetData() {
   closeWs();
   state.userId = null;
   state.username = null;
+  exitEditMode();
   state.genreLevels = {};
   state.avoidGenres = new Set();
   state.seeds = [];
@@ -747,6 +800,7 @@ function init() {
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");
   $("copy-link-btn").onclick = () => copyText(inviteLink(), "Invite link");
   $("user-badge").onclick = showProfile;
+  $("edit-prefs-btn").onclick = openEditPrefs;
   $("reset-btn").onclick = resetData;
   $("profile-back-btn").onclick = () => showScreen("screen-lobby");
   $("trailer-close").onclick = closeTrailer;
