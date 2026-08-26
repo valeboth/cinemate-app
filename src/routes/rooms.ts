@@ -4,7 +4,7 @@ import { genId } from "../lib/ids";
 import { uniqueJoinCode, userExists } from "../lib/db";
 import { mapRoom } from "../lib/mappers";
 import { getDeckForUser, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
-import { getWatchProviders, getImdbId, getTrailerKey } from "../services/tmdb";
+import { getWatchProviders, getImdbId, getTrailerKey, getTitleDetails } from "../services/tmdb";
 import { getOmdbRatings } from "../services/omdb";
 import { createRequest } from "../services/overseerr";
 import { rateLimit, clientIp } from "../lib/ratelimit";
@@ -330,6 +330,24 @@ rooms.patch("/:id", async (c) => {
   }
 
   return c.json({ ...room, media_type: mediaType, deck: [] }, 200);
+});
+
+// GET /api/rooms/:id/details/:tmdbId — full metadata for the details view
+// (cast, director/creator, tagline, runtime, genres, full overview).
+rooms.get("/:id/details/:tmdbId", async (c) => {
+  const id = c.req.param("id");
+  const tmdbId = Number(c.req.param("tmdbId"));
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: "tmdb_id_invalid" }, 400);
+
+  const row = await c.env.DB.prepare("SELECT media_type FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+  const mediaType = String(row.media_type) === "tv" ? "tv" : "movie";
+
+  const details = await getTitleDetails(c.env, mediaType, tmdbId);
+  if (!details) return c.json({ error: "details_fetch_failed" }, 502);
+  return c.json(details, 200);
 });
 
 // GET /api/rooms/:id/providers/:tmdbId — where a title can be watched (RO).

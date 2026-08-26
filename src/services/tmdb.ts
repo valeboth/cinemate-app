@@ -193,6 +193,88 @@ export async function getTitleCard(
   }
 }
 
+interface TmdbCredits {
+  cast?: { name: string; character?: string; profile_path?: string | null }[];
+  crew?: { name: string; job?: string; department?: string }[];
+}
+interface TmdbDetailFull extends TmdbDetail {
+  tagline?: string;
+  runtime?: number; // movie
+  episode_run_time?: number[]; // tv
+  number_of_seasons?: number; // tv
+  created_by?: { name: string }[]; // tv
+  credits?: TmdbCredits;
+}
+
+export interface CastMember {
+  name: string;
+  character: string | null;
+  profile_path: string | null;
+}
+export interface TitleDetails {
+  tmdb_id: number;
+  media_type: MediaType;
+  title: string;
+  tagline: string | null;
+  overview: string;
+  poster_path: string | null;
+  release_year: number | null;
+  genres: string[];
+  runtime: number | null; // minutes (movie) or per-episode (tv)
+  seasons: number | null; // tv only
+  vote_average: number | null;
+  directors: string[]; // Director(s) for movies, Creator(s) for tv
+  cast: CastMember[];
+}
+
+/** Full metadata for the details view: cast, director/creator, runtime, genres. One cached call. */
+export async function getTitleDetails(
+  env: Env,
+  mediaType: MediaType,
+  id: number,
+): Promise<TitleDetails | null> {
+  try {
+    const d = await tmdbFetch<TmdbDetailFull>(env, `/${mediaType}/${id}`, {
+      language: TMDB_LANG,
+      append_to_response: "credits",
+    });
+    const directors =
+      mediaType === "movie"
+        ? (d.credits?.crew ?? []).filter((c) => c.job === "Director").map((c) => c.name)
+        : (d.created_by ?? []).map((c) => c.name);
+    const runtime =
+      mediaType === "movie"
+        ? typeof d.runtime === "number"
+          ? d.runtime
+          : null
+        : Array.isArray(d.episode_run_time) && d.episode_run_time.length
+          ? d.episode_run_time[0]
+          : null;
+    return {
+      tmdb_id: d.id,
+      media_type: mediaType,
+      title: (mediaType === "movie" ? d.title : d.name) ?? "",
+      tagline: d.tagline?.trim() || null,
+      overview: d.overview ?? "",
+      poster_path: d.poster_path ?? null,
+      release_year: dateToYear(mediaType === "movie" ? d.release_date : d.first_air_date),
+      genres: (d.genres ?? []).map((g) => g.name),
+      runtime,
+      seasons:
+        mediaType === "tv" && typeof d.number_of_seasons === "number" ? d.number_of_seasons : null,
+      vote_average: typeof d.vote_average === "number" ? d.vote_average : null,
+      directors: [...new Set(directors)].slice(0, 3),
+      cast: (d.credits?.cast ?? []).slice(0, 12).map((c) => ({
+        name: c.name,
+        character: c.character?.trim() || null,
+        profile_path: c.profile_path ?? null,
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
 interface TmdbProviderEntry {
   provider_id: number;
   provider_name: string;

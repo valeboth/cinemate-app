@@ -577,6 +577,80 @@ select.input {
   border-radius: 12px;
 }
 
+/* ── Details sheet ── */
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.details-sheet {
+  background: var(--surface);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 460px;
+  max-height: 92vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: var(--shadow);
+  -webkit-overflow-scrolling: touch;
+}
+.details-hero {
+  width: 100%;
+  height: 48vh;
+  background-size: cover;
+  background-position: center 15%;
+  background-color: var(--surface-2);
+}
+.details-body {
+  padding: 1.1rem;
+}
+.details-body h3 {
+  margin: 0 0 0.3rem;
+}
+.details-tagline {
+  font-style: italic;
+  color: var(--muted);
+  margin: 0 0 0.4rem;
+  font-size: 0.88rem;
+}
+.details-crew {
+  margin: 0.9rem 0 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.details-overview {
+  margin: 0.7rem 0 1rem;
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+.details-cast {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+.cast-chip {
+  text-align: center;
+}
+.cast-photo {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center top;
+  background-color: var(--surface-2);
+  margin-bottom: 0.35rem;
+}
+.cast-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.cast-role {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
 .attribution {
   padding: 0.75rem 0;
   font-size: 0.7rem;
