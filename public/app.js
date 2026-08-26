@@ -626,21 +626,16 @@ function showMatch(card, reason) {
   showScreen("screen-match");
 }
 
-async function addToOverseerr() {
-  if (!currentMatchCard) return;
+// Shared Overseerr request flow: ask for the PIN once (stored locally), POST, toast.
+async function overseerrRequest(path, extraBody) {
   let pin = localStorage.getItem("cinemate_request_pin");
   if (!pin) {
     pin = (window.prompt("Request PIN") || "").trim();
     if (!pin) return;
     localStorage.setItem("cinemate_request_pin", pin);
   }
-  const btn = $("add-overseerr-btn");
-  btn.disabled = true;
   try {
-    await api(`/api/rooms/${state.room.id}/request`, {
-      method: "POST",
-      body: JSON.stringify({ user_id: state.userId, tmdb_id: currentMatchCard.tmdb_id, pin }),
-    });
+    await api(path, { method: "POST", body: JSON.stringify({ user_id: state.userId, pin, ...extraBody }) });
     toast("✅ Requested in Overseerr");
   } catch (e) {
     if (e.message === "invalid_pin") {
@@ -653,9 +648,15 @@ async function addToOverseerr() {
     } else {
       toast("Overseerr request failed");
     }
-  } finally {
-    btn.disabled = false;
   }
+}
+
+async function addToOverseerr() {
+  if (!currentMatchCard) return;
+  const btn = $("add-overseerr-btn");
+  btn.disabled = true;
+  await overseerrRequest(`/api/rooms/${state.room.id}/request`, { tmdb_id: currentMatchCard.tmdb_id });
+  btn.disabled = false;
 }
 
 async function renderRatings(tmdbId, elId) {
@@ -709,7 +710,7 @@ async function renderProviders(tmdbId) {
 }
 
 // ── Card lists ──────────────────────────────────────────────────────────────
-function renderCardList(container, items, emptyText) {
+function renderCardList(container, items, emptyText, onRequest) {
   container.innerHTML = "";
   if (!items.length) {
     container.innerHTML = `<p class='muted'>${emptyText}</p>`;
@@ -734,6 +735,14 @@ function renderCardList(container, items, emptyText) {
     info.appendChild(title);
     info.appendChild(document.createElement("br"));
     info.appendChild(link);
+    if (onRequest) {
+      const reqBtn = document.createElement("button");
+      reqBtn.className = "chip-btn";
+      reqBtn.textContent = "➕ Overseerr";
+      reqBtn.onclick = () => onRequest(m);
+      info.appendChild(document.createElement("br"));
+      info.appendChild(reqBtn);
+    }
     item.appendChild(poster);
     item.appendChild(info);
     container.appendChild(item);
@@ -758,7 +767,9 @@ async function showWatchlist() {
   list.innerHTML = "<p class='muted'>Loading…</p>";
   try {
     const res = await api(`/api/users/${state.userId}/watchlist`);
-    renderCardList(list, res.watchlist || [], "Your watchlist is empty. Like titles in solo mode.");
+    renderCardList(list, res.watchlist || [], "Your watchlist is empty. Like titles in solo mode.", (m) =>
+      overseerrRequest(`/api/users/${state.userId}/request`, { tmdb_id: m.tmdb_id, media_type: m.media_type }),
+    );
   } catch (e) {
     list.innerHTML = "<p class='error'>Error: " + e.message + "</p>";
   }
