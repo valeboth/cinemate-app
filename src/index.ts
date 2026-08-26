@@ -4,13 +4,14 @@ import { users } from "./routes/users";
 import { profile } from "./routes/profile";
 import { rooms } from "./routes/rooms";
 import { search } from "./routes/search";
+import { cleanupOldData } from "./lib/cleanup";
 
 // Durable Object — live per-room state (WebSocket + match broadcast).
 export { Room } from "./durable-objects/room";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", version: "v3.6" }));
+app.get("/api/health", (c) => c.json({ ok: true, service: "cinemate", version: "v3.7" }));
 
 app.route("/api/users", users);
 app.route("/api/profile", profile);
@@ -24,4 +25,10 @@ app.get("/join", (c) => c.env.ASSETS.fetch(new Request(new URL("/index.html", c.
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
 
-export default app;
+// fetch = the Hono app; scheduled = the daily D1 cleanup (Cron Trigger, see wrangler.toml).
+export default {
+  fetch: (request: Request, env: Env, ctx: ExecutionContext) => app.fetch(request, env, ctx),
+  scheduled: (_event: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    ctx.waitUntil(cleanupOldData(env));
+  },
+} satisfies ExportedHandler<Env>;
