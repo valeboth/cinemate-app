@@ -1,0 +1,4 @@
+# Always revalidate the app shell + assets so a new deploy reaches devices immediately
+# (no stale app.js/style.css cached on phones). Files are tiny, so the 304s are cheap.
+/*
+  Cache-Control: no-cache
