@@ -95,7 +95,10 @@
                 <p id="card-meta" class="card-sub"></p>
                 <p id="card-rating" class="rating-row"></p>
                 <p id="card-overview" class="overview"></p>
-                <button id="trailer-btn" class="trailer-btn hidden">▶ Trailer</button>
+                <div class="card-actions">
+                  <button id="details-btn" class="trailer-btn hidden">ⓘ Details</button>
+                  <button id="trailer-btn" class="trailer-btn hidden">▶ Trailer</button>
+                </div>
               </div>
             </div>
             <p id="deck-empty" class="muted hidden">That's the whole deck! 🎉 Check your matches.</p>
@@ -170,6 +173,24 @@
         <div class="modal-actions">
           <button id="pin-cancel" class="btn">Cancel</button>
           <button id="pin-ok" class="btn btn-primary">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Expanded card / details (cast, director, full overview) -->
+    <div id="details-overlay" class="overlay hidden">
+      <button id="details-close" class="overlay-close" aria-label="Close">✕</button>
+      <div class="details-sheet">
+        <div id="details-poster" class="details-hero"></div>
+        <div class="details-body">
+          <h3 id="details-title"></h3>
+          <p id="details-tagline" class="details-tagline hidden"></p>
+          <p id="details-meta" class="card-sub"></p>
+          <p id="details-rating" class="rating-row"></p>
+          <p id="details-crew" class="details-crew hidden"></p>
+          <p id="details-overview" class="details-overview"></p>
+          <div id="details-cast" class="details-cast"></div>
+          <button id="details-trailer" class="trailer-btn">▶ Trailer</button>
         </div>
       </div>
     </div>

@@ -482,6 +482,8 @@ function renderCard() {
   $("card-overview").textContent = card.overview || "";
   $("trailer-btn").classList.remove("hidden");
   $("trailer-btn").onclick = () => openTrailer(card.tmdb_id);
+  $("details-btn").classList.remove("hidden");
+  $("details-btn").onclick = () => openDetails(card);
   renderRatings(card.tmdb_id, "card-rating");
 }
 
@@ -541,8 +543,8 @@ function setupGestures() {
   const el = $("card");
   let drag = null;
   el.addEventListener("pointerdown", (e) => {
-    if (el.classList.contains("hidden") || e.target.closest("#trailer-btn")) return;
-    drag = { x: e.clientX, y: e.clientY, dx: 0 };
+    if (el.classList.contains("hidden") || e.target.closest("button")) return;
+    drag = { x: e.clientX, y: e.clientY, dx: 0, moved: false };
     el.setPointerCapture(e.pointerId);
     el.style.transition = "none";
   });
@@ -550,6 +552,7 @@ function setupGestures() {
     if (!drag) return;
     drag.dx = e.clientX - drag.x;
     const dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(drag.dx, dy) > 8) drag.moved = true;
     const rot = Math.max(-15, Math.min(15, drag.dx / 12));
     el.style.transform = `translate(${drag.dx}px, ${dy}px) rotate(${rot}deg)`;
     const p = Math.min(1, Math.abs(drag.dx) / SWIPE_THRESHOLD);
@@ -558,8 +561,18 @@ function setupGestures() {
   });
   const end = () => {
     if (!drag) return;
-    const dx = drag.dx;
+    const { dx, moved } = drag;
     drag = null;
+    if (!moved) {
+      // A tap (no real drag) → open the details sheet for the current card.
+      el.style.transition = "transform 0.15s ease";
+      el.style.transform = "";
+      $("stamp-like").style.opacity = 0;
+      $("stamp-nope").style.opacity = 0;
+      const card = state.deck[state.deckIndex];
+      if (card) openDetails(card);
+      return;
+    }
     if (Math.abs(dx) > SWIPE_THRESHOLD) {
       flingAndSwipe(dx > 0 ? "like" : "dislike");
     } else {
@@ -591,6 +604,70 @@ async function openTrailer(tmdbId) {
 function closeTrailer() {
   $("trailer-frame").innerHTML = "";
   $("trailer-overlay").classList.add("hidden");
+}
+
+// ── Details sheet ───────────────────────────────────────────────────────────
+async function openDetails(card) {
+  // Prefill instantly from the card we already have, then enrich from the API.
+  $("details-poster").style.backgroundImage = card.poster_path
+    ? `url(https://image.tmdb.org/t/p/w780${card.poster_path})`
+    : "none";
+  const sheet = document.querySelector(".details-sheet");
+  if (sheet) sheet.scrollTop = 0; // always open scrolled to the top
+  $("details-title").textContent = card.title || "";
+  $("details-tagline").classList.add("hidden");
+  $("details-meta").textContent = card.release_year ? String(card.release_year) : "";
+  $("details-overview").textContent = card.overview || "Loading…";
+  $("details-crew").classList.add("hidden");
+  $("details-cast").innerHTML = "";
+  $("details-trailer").onclick = () => openTrailer(card.tmdb_id);
+  renderRatings(card.tmdb_id, "details-rating");
+  $("details-overlay").classList.remove("hidden");
+
+  try {
+    const d = await api(`/api/rooms/${state.room.id}/details/${card.tmdb_id}`);
+    $("details-title").textContent = d.title || card.title || "";
+    if (d.tagline) {
+      $("details-tagline").textContent = d.tagline;
+      $("details-tagline").classList.remove("hidden");
+    }
+    const meta = [];
+    if (d.release_year) meta.push(d.release_year);
+    if (d.runtime) meta.push(d.media_type === "tv" ? `~${d.runtime} min/ep` : `${d.runtime} min`);
+    if (d.seasons) meta.push(d.seasons + (d.seasons === 1 ? " season" : " seasons"));
+    if (d.genres && d.genres.length) meta.push(d.genres.slice(0, 3).join(", "));
+    $("details-meta").textContent = meta.join("  ·  ");
+    $("details-overview").textContent = d.overview || "No description available.";
+    if (d.directors && d.directors.length) {
+      const label = (d.media_type === "tv" ? "Creator" : "Director") + (d.directors.length > 1 ? "s" : "");
+      $("details-crew").textContent = `${label}: ${d.directors.join(", ")}`;
+      $("details-crew").classList.remove("hidden");
+    }
+    const box = $("details-cast");
+    box.innerHTML = "";
+    (d.cast || []).forEach((p) => {
+      const chip = document.createElement("div");
+      chip.className = "cast-chip";
+      const photo = document.createElement("div");
+      photo.className = "cast-photo";
+      if (p.profile_path) photo.style.backgroundImage = `url(https://image.tmdb.org/t/p/w185${p.profile_path})`;
+      const name = document.createElement("div");
+      name.className = "cast-name";
+      name.textContent = p.name;
+      const role = document.createElement("div");
+      role.className = "cast-role";
+      role.textContent = p.character || "";
+      chip.appendChild(photo);
+      chip.appendChild(name);
+      chip.appendChild(role);
+      box.appendChild(chip);
+    });
+  } catch {
+    $("details-overview").textContent = card.overview || "Couldn't load details.";
+  }
+}
+function closeDetails() {
+  $("details-overlay").classList.add("hidden");
 }
 
 // ── WebSocket (live) ────────────────────────────────────────────────────────
@@ -934,6 +1011,10 @@ function init() {
   $("trailer-close").onclick = closeTrailer;
   $("trailer-overlay").onclick = (e) => {
     if (e.target === $("trailer-overlay")) closeTrailer();
+  };
+  $("details-close").onclick = closeDetails;
+  $("details-overlay").onclick = (e) => {
+    if (e.target === $("details-overlay")) closeDetails();
   };
 
   const pendingCode = (new URLSearchParams(location.search).get("code") || "").trim().toUpperCase();
