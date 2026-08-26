@@ -843,6 +843,18 @@ async function showWatchlist() {
   }
 }
 
+// Logo → home: leave any room and go to the lobby (or onboarding if not set up yet).
+function goHome() {
+  if (state.userId && state.username) {
+    closeWs();
+    clearRoom();
+    state.room = null;
+    showScreen("screen-lobby");
+  } else {
+    showScreen("screen-onboarding");
+  }
+}
+
 // ── Profile / reset ────────────────────────────────────────────────────────
 function showProfile() {
   $("profile-name").textContent = state.username ? `Signed in as ${state.username}` : "";
@@ -914,6 +926,7 @@ function init() {
   $("match-continue-btn").onclick = () => showScreen("screen-swipe");
   $("add-overseerr-btn").onclick = addToOverseerr;
   $("copy-link-btn").onclick = () => copyText(inviteLink(), "Invite link");
+  $("app-logo").onclick = goHome;
   $("user-badge").onclick = showProfile;
   $("edit-prefs-btn").onclick = openEditPrefs;
   $("reset-btn").onclick = resetData;
