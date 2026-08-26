@@ -15,8 +15,12 @@ jobs:
           node-version: 20
           cache: npm
 
+      # `npm install` (not `npm ci`): the lockfile is generated on macOS, and npm's
+      # optional-dependency handling omits Linux-only native binaries (esbuild/rollup),
+      # which makes `npm ci` fail on CI's Linux runner. `npm install` fetches the right
+      # platform binaries for the runner. See npm/cli#4828.
       - name: Install
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Lint
         run: npm run lint

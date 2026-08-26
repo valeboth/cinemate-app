@@ -20,8 +20,11 @@ jobs:
           node-version: 20
           cache: npm
 
+      # `npm install` (not `npm ci`): the lockfile is generated on macOS and omits
+      # Linux-only native binaries (esbuild/rollup) that `npm ci` demands on the Linux
+      # runner. `npm install` fetches the correct platform binaries. See npm/cli#4828.
       - name: Install
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       # A single deploy: ships the Worker + the static frontend (Workers Static Assets).
       - name: Deploy Worker + Assets
