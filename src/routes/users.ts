@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env, MediaType } from "../types";
 import { genId } from "../lib/ids";
 import { getTitleCard } from "../services/tmdb";
+import { createRequest } from "../services/overseerr";
 
 export const users = new Hono<{ Bindings: Env }>();
 
@@ -54,4 +55,21 @@ users.get("/:userId/watchlist", async (c) => {
   );
 
   return c.json({ user_id: userId, watchlist }, 200);
+});
+
+// POST /api/users/:userId/request — request a watchlist title in Overseerr (PIN-gated).
+// Body: { tmdb_id, media_type, pin }. No room needed; the shared PIN is the gate.
+users.post("/:userId/request", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const tmdbId = Number(body?.tmdb_id);
+  const mediaType = body?.media_type === "tv" ? "tv" : "movie";
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return c.json({ error: "tmdb_id_invalid" }, 400);
+
+  if (!c.env.REQUEST_PIN) return c.json({ error: "requests_disabled" }, 403);
+  const pin = typeof body?.pin === "string" ? body.pin : "";
+  if (pin !== c.env.REQUEST_PIN) return c.json({ error: "invalid_pin" }, 403);
+
+  const result = await createRequest(c.env, mediaType, tmdbId);
+  if (!result.ok) return c.json({ error: result.error ?? "request_failed" }, 502);
+  return c.json({ ok: true, tmdb_id: tmdbId }, 200);
 });

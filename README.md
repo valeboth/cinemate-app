@@ -21,7 +21,8 @@ Live: **https://cinemate.valegboth.win** · runs entirely on **Cloudflare free t
 - **Invite** — 6-char code + one-tap shareable link (`/join?code=…`).
 - **Solo mode** + persistent watchlist.
 - **Overseerr** (optional) — excludes already requested/available titles from the deck
-  and adds an **"Add to Overseerr"** button on match (auto-request → Radarr/Sonarr).
+  and adds an **"Add to Overseerr"** button on match **and on each solo-watchlist title**
+  (auto-request → Radarr/Sonarr). Requests are gated by a shared **PIN** (the app is public).
 - Watch providers (where to watch, RO) on the match screen. TMDb attribution in the footer.
 
 ## Stack
@@ -70,6 +71,7 @@ npx wrangler dev                    # http://localhost:8787 (UI + API, same orig
 | `OMDB_API_KEY` | optional | IMDb/RT/Metacritic ratings (best-effort) |
 | `OVERSEERR_URL` / `OVERSEERR_API_KEY` | optional | Overseerr integration |
 | `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` | optional | if Overseerr is behind Cloudflare Access |
+| `REQUEST_PIN` | optional | shared PIN required to request in Overseerr; unset = requests disabled |
 
 The keys never reach the frontend — the browser calls the Worker, the Worker calls the APIs.
 
@@ -82,7 +84,7 @@ The keys never reach the frontend — the browser calls the Worker, the Worker c
 | `npm run db:migrate:local` / `:remote` | apply `schema.sql` to local / remote D1 |
 
 ## API routes (all under `/api`)
-`POST /users` · `GET /users/:id/watchlist` · `POST /profile/quiz` · `GET /profile/:id`
+`POST /users` · `GET /users/:id/watchlist` · `POST /users/:id/request` · `POST /profile/quiz` · `GET /profile/:id`
 · `GET /search` · `POST /rooms` · `POST /rooms/join` · `GET /rooms/:id`
 · `PATCH /rooms/:id` (movie/TV toggle) · `POST /rooms/:id/new-session`
 · `GET /rooms/:id/deck` · `POST /rooms/:id/swipe` · `DELETE /rooms/:id/swipe` (undo)
