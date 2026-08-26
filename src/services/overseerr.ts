@@ -52,7 +52,9 @@ export async function getRequestedTmdbIds(env: Env): Promise<Set<number>> {
   const ids = new Set<number>();
   try {
     for (let page = 1; page <= MEDIA_PAGES; page++) {
-      const url = `${baseUrl(env)}/api/v1/media?take=100&skip=${(page - 1) * 100}&filter=allavailable`;
+      // filter=all so we catch requested/processing too (not just available); the
+      // status>=2 check below then keeps pending/processing/partial/available.
+      const url = `${baseUrl(env)}/api/v1/media?take=100&skip=${(page - 1) * 100}&filter=all`;
       const res = await fetch(url, { headers: authHeaders(env) });
       if (!res.ok) break;
       const data = (await res.json()) as OverseerrMediaResponse;
