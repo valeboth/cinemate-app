@@ -534,6 +534,23 @@ select.input {
   z-index: 20;
   padding: 1rem;
 }
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+  width: 100%;
+  max-width: 320px;
+  box-shadow: var(--shadow);
+}
+.modal h3 {
+  margin: 0 0 0.8rem;
+  text-align: center;
+}
+.modal-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
 .overlay-close {
   position: absolute;
   top: 1rem;

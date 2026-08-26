@@ -651,27 +651,60 @@ function showMatch(card, reason) {
   showScreen("screen-match");
 }
 
-// Shared Overseerr request flow: ask for the PIN once (stored locally), POST, toast.
-async function overseerrRequest(path, extraBody) {
+// Masked PIN modal. Resolves with the entered PIN, or null if cancelled.
+function askPin(errorMsg) {
+  return new Promise((resolve) => {
+    const overlay = $("pin-overlay");
+    const input = $("pin-input");
+    input.value = "";
+    $("pin-error").textContent = errorMsg || "";
+    overlay.classList.remove("hidden");
+    setTimeout(() => input.focus(), 50);
+    const done = (val) => {
+      overlay.classList.add("hidden");
+      $("pin-ok").onclick = null;
+      $("pin-cancel").onclick = null;
+      input.onkeydown = null;
+      resolve(val);
+    };
+    $("pin-ok").onclick = () => done(input.value.trim() || null);
+    $("pin-cancel").onclick = () => done(null);
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") done(input.value.trim() || null);
+      else if (e.key === "Escape") done(null);
+    };
+  });
+}
+
+// Shared Overseerr request flow: masked PIN (re-asks on a wrong PIN), success alert with title.
+async function overseerrRequest(path, extraBody, label) {
   let pin = localStorage.getItem("cinemate_request_pin");
-  if (!pin) {
-    pin = (window.prompt("Request PIN") || "").trim();
-    if (!pin) return;
-    localStorage.setItem("cinemate_request_pin", pin);
-  }
-  try {
-    await api(path, { method: "POST", body: JSON.stringify({ user_id: state.userId, pin, ...extraBody }) });
-    toast("✅ Requested in Overseerr");
-  } catch (e) {
-    if (e.message === "invalid_pin") {
-      localStorage.removeItem("cinemate_request_pin");
-      toast("Wrong PIN — try again");
-    } else if (e.message === "requests_disabled") {
-      toast("Requests are disabled");
-    } else if (e.message === "not_configured") {
-      toast("Overseerr not set up");
-    } else {
-      toast("Overseerr request failed");
+  let errorMsg = "";
+  for (;;) {
+    if (!pin) {
+      pin = await askPin(errorMsg);
+      if (!pin) return; // cancelled
+      localStorage.setItem("cinemate_request_pin", pin);
+    }
+    try {
+      await api(path, { method: "POST", body: JSON.stringify({ user_id: state.userId, pin, ...extraBody }) });
+      toast(`✅ ${label ? `"${label}" ` : ""}added to Overseerr`);
+      return;
+    } catch (e) {
+      if (e.message === "invalid_pin") {
+        localStorage.removeItem("cinemate_request_pin");
+        pin = null;
+        errorMsg = "Wrong PIN — try again";
+        continue; // re-open the modal with the error
+      }
+      toast(
+        e.message === "requests_disabled"
+          ? "Requests are disabled"
+          : e.message === "not_configured"
+            ? "Overseerr not set up"
+            : "Overseerr request failed",
+      );
+      return;
     }
   }
 }
@@ -680,7 +713,11 @@ async function addToOverseerr() {
   if (!currentMatchCard) return;
   const btn = $("add-overseerr-btn");
   btn.disabled = true;
-  await overseerrRequest(`/api/rooms/${state.room.id}/request`, { tmdb_id: currentMatchCard.tmdb_id });
+  await overseerrRequest(
+    `/api/rooms/${state.room.id}/request`,
+    { tmdb_id: currentMatchCard.tmdb_id },
+    currentMatchCard.title,
+  );
   btn.disabled = false;
 }
 
@@ -781,7 +818,7 @@ async function showMatchesList() {
   try {
     const res = await api(`/api/rooms/${state.room.id}/matches`);
     renderCardList(list, res.matches || [], "No matches yet.", (m) =>
-      overseerrRequest(`/api/rooms/${state.room.id}/request`, { tmdb_id: m.tmdb_id }),
+      overseerrRequest(`/api/rooms/${state.room.id}/request`, { tmdb_id: m.tmdb_id }, (m.card || {}).title),
     );
   } catch (e) {
     list.innerHTML = "<p class='error'>Error: " + e.message + "</p>";
@@ -795,7 +832,11 @@ async function showWatchlist() {
   try {
     const res = await api(`/api/users/${state.userId}/watchlist`);
     renderCardList(list, res.watchlist || [], "Your watchlist is empty. Like titles in solo mode.", (m) =>
-      overseerrRequest(`/api/users/${state.userId}/request`, { tmdb_id: m.tmdb_id, media_type: m.media_type }),
+      overseerrRequest(
+        `/api/users/${state.userId}/request`,
+        { tmdb_id: m.tmdb_id, media_type: m.media_type },
+        (m.card || {}).title,
+      ),
     );
   } catch (e) {
     list.innerHTML = "<p class='error'>Error: " + e.message + "</p>";

@@ -161,6 +161,19 @@
       </footer>
     </main>
 
+    <!-- PIN modal (Overseerr request) -->
+    <div id="pin-overlay" class="overlay hidden">
+      <div class="modal">
+        <h3>Enter request PIN</h3>
+        <input id="pin-input" class="input" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" />
+        <p id="pin-error" class="error"></p>
+        <div class="modal-actions">
+          <button id="pin-cancel" class="btn">Cancel</button>
+          <button id="pin-ok" class="btn btn-primary">OK</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Trailer overlay -->
     <div id="trailer-overlay" class="overlay hidden">
       <button id="trailer-close" class="overlay-close" aria-label="Close">✕</button>
