@@ -12,6 +12,10 @@ workers_dev = false
 # The Worker serves both the files in public/ and the /api routes on one origin.
 # Assets take priority: GET / -> index.html, /app.js -> file; routes without a
 # matching file (e.g. /api/*) reach the Worker. No CORS, a single deploy.
+# Daily cleanup of old rooms/swipes/matches (see scheduled handler in src/index.ts).
+[triggers]
+crons = ["0 4 * * *"]
+
 [assets]
 directory = "./public"
 # ASSETS binding: lets the Worker serve index.html for SPA paths like /join.
