@@ -370,8 +370,33 @@ async function enterSwipe() {
   state.lastSwiped = null;
   updateUndo();
   syncMediaToggle();
+  saveRoom(); // persist so a refresh restores the session instead of kicking to the lobby
   connectWs();
   await loadDeck();
+}
+
+// Persist / restore the current room so a page refresh keeps you in the game.
+function saveRoom() {
+  if (state.room) {
+    localStorage.setItem("cinemate_room", JSON.stringify({ ...state.room, soloMode: state.soloMode }));
+  }
+}
+function clearRoom() {
+  localStorage.removeItem("cinemate_room");
+}
+function restoreRoom() {
+  const raw = localStorage.getItem("cinemate_room");
+  if (!raw) return false;
+  try {
+    const r = JSON.parse(raw);
+    if (!r || !r.id) return false;
+    state.room = r;
+    state.soloMode = !!r.soloMode;
+    state.mediaType = r.media_type || "movie";
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function loadDeck() {
@@ -755,7 +780,9 @@ async function showMatchesList() {
   list.innerHTML = "<p class='muted'>Loading…</p>";
   try {
     const res = await api(`/api/rooms/${state.room.id}/matches`);
-    renderCardList(list, res.matches || [], "No matches yet.");
+    renderCardList(list, res.matches || [], "No matches yet.", (m) =>
+      overseerrRequest(`/api/rooms/${state.room.id}/request`, { tmdb_id: m.tmdb_id }),
+    );
   } catch (e) {
     list.innerHTML = "<p class='error'>Error: " + e.message + "</p>";
   }
@@ -788,6 +815,7 @@ function resetData() {
   state.userId = null;
   state.username = null;
   exitEditMode();
+  clearRoom();
   state.genreLevels = {};
   state.avoidGenres = new Set();
   state.seeds = [];
@@ -858,8 +886,12 @@ function init() {
   if (state.userId && state.username) {
     updateUserBadge();
     if (pendingCode) {
+      // An invite link wins over any saved room.
       $("join-code-input").value = pendingCode;
       handleJoinRoom();
+    } else if (restoreRoom()) {
+      // Refreshed mid-game → resume the room instead of dropping to the lobby.
+      enterSwipe();
     } else {
       showScreen("screen-lobby");
     }
