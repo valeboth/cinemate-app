@@ -7,12 +7,16 @@ import { getDeckForUser, getCardFromDeck, resetDeck, buildMatchReason } from "..
 import { getWatchProviders, getImdbId, getTrailerKey } from "../services/tmdb";
 import { getOmdbRatings } from "../services/omdb";
 import { createRequest } from "../services/overseerr";
+import { rateLimit, clientIp } from "../lib/ratelimit";
 
 export const rooms = new Hono<{ Bindings: Env }>();
 
 // POST /api/rooms — create a room + invite code. The user becomes user_a.
 // Body: { user_id, media_type?='movie', platform_filter?, solo?=false }
 rooms.post("/", async (c) => {
+  if (!(await rateLimit(c.env, `rooms:${clientIp(c.req.raw.headers)}`, 30, 60))) {
+    return c.json({ error: "rate_limited" }, 429);
+  }
   const body = await c.req.json().catch(() => null);
   const userId = typeof body?.user_id === "string" ? body.user_id : "";
   if (!userId) return c.json({ error: "user_id_required" }, 400);

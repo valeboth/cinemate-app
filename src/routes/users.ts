@@ -3,12 +3,16 @@ import type { Env, MediaType } from "../types";
 import { genId } from "../lib/ids";
 import { getTitleCard } from "../services/tmdb";
 import { createRequest } from "../services/overseerr";
+import { rateLimit, clientIp } from "../lib/ratelimit";
 
 export const users = new Hono<{ Bindings: Env }>();
 
 // POST /api/users — create a user.
 // Body: { username: string }
 users.post("/", async (c) => {
+  if (!(await rateLimit(c.env, `users:${clientIp(c.req.raw.headers)}`, 20, 60))) {
+    return c.json({ error: "rate_limited" }, 429);
+  }
   const body = await c.req.json().catch(() => null);
   const username = typeof body?.username === "string" ? body.username.trim() : "";
   if (username.length < 1 || username.length > 40) {
