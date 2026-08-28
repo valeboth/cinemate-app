@@ -15,7 +15,9 @@ const TOP_GENRES = 3;
 const MIN_DECK = 5;
 // Hard cap on the shared pool. The deck tops up on demand (extendDeck) but never
 // past this — keeps TMDb calls, KV writes and D1 row size bounded on the free tier.
-const MAX_DECK = 120;
+// ~300 → ~15 TMDb pages, ~7 KV writes/room, a ~90KB deck-cards value: all well
+// within the free tier (tightest limit is KV writes, 1k/day).
+const MAX_DECK = 300;
 // Pages pulled per top-up call (20 titles/page). Small → cheap, cache-friendly.
 const TOPUP_PAGES = 2;
 // Rotated across generation slices + top-up rounds so the pool isn't all "popular".
