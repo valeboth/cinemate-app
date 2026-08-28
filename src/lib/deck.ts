@@ -22,6 +22,10 @@ const MAX_DECK = 300;
 const TOPUP_PAGES = 2;
 // Rotated across generation slices + top-up rounds so the pool isn't all "popular".
 const SORTS = ["popularity.desc", "vote_average.desc", "primary_release_date.desc"];
+// Adaptive top-up: the N most-recent liked titles become live seeds, each expanded
+// into up to RECS_PER_SEED recommendations. Kept small → a few cached TMDb calls.
+const LIKED_SEEDS_PER_TOPUP = 3;
+const RECS_PER_SEED = 8;
 const DECK_CARDS_KV_PREFIX = "deck-cards:";
 const DECK_CARDS_TTL = 60 * 60 * 24 * 7; // 7 days
 
@@ -33,6 +37,29 @@ const DECK_CARDS_TTL = 60 * 60 * 24 * 7; // 7 days
 export function topupCursor(poolSize: number): { startPage: number; sortBy: string } {
   const startPage = Math.floor(poolSize / 20) + 1;
   return { startPage, sortBy: SORTS[startPage % SORTS.length] };
+}
+
+/**
+ * Drop cards in any avoided genre. TMDb recommendations/similar are NOT genre-filtered
+ * by the API, so callers that use them must re-apply avoid_genres. Pure → unit-tested.
+ */
+export function rejectAvoidGenres(cards: DeckCard[], avoidGenres: number[]): DeckCard[] {
+  if (avoidGenres.length === 0) return cards;
+  const av = new Set(avoidGenres);
+  return cards.filter((c) => !c.genres.some((g) => av.has(g)));
+}
+
+/** Most-recent liked tmdb_ids in the room (both users → shared pool; solo = the one user). */
+async function recentLikedIds(env: Env, roomId: string, limit: number): Promise<number[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT tmdb_id FROM swipes
+     WHERE room_id = ? AND direction = 'like'
+     ORDER BY created_at DESC
+     LIMIT ?`,
+  )
+    .bind(roomId, limit)
+    .all<{ tmdb_id: number }>();
+  return (results ?? []).map((r) => r.tmdb_id);
 }
 
 async function loadProfile(env: Env, userId: string | null): Promise<Profile | null> {
@@ -136,11 +163,7 @@ async function generatePool(
       }),
     );
     // Recommendations aren't genre-filtered by the API → enforce avoid_genres here.
-    if (avoidGenres.length > 0) {
-      const av = new Set(avoidGenres);
-      return cards.filter((c) => !c.genres.some((g) => av.has(g)));
-    }
-    return cards;
+    return rejectAvoidGenres(cards, avoidGenres);
   }
 
   // No applicable seeds → union of genre slices (per-user tastes + common ground).
@@ -266,11 +289,12 @@ export async function getDeckForUser(
 }
 
 /**
- * Top up the shared pool on demand: fetch the next TMDb page(s) of the common-ground
- * slice, dedupe against the existing pool, persist the extended pool (D1 + KV), and
- * return ONLY the new cards for THIS user (their swipes + Overseerr ids excluded).
- * Capped at MAX_DECK so the pool — and TMDb/KV/D1 usage — stays bounded on the free tier.
- * Both users share the same extended pool, so matches remain possible.
+ * Top up the shared pool on demand. Adaptive: the room's most-recent likes (both users)
+ * are expanded into TMDb recommendations and mixed with a genre-discovery slice, so the
+ * deck leans toward what's being liked. Deduped against the existing pool, persisted
+ * (D1 + KV), and only the new cards for THIS user are returned (their swipes + Overseerr
+ * ids excluded). Capped at MAX_DECK so TMDb/KV/D1 usage stays bounded on the free tier.
+ * Recommendations go into the SHARED pool, so matches remain possible (and solo works too).
  */
 export async function extendDeck(
   env: Env,
@@ -293,8 +317,20 @@ export async function extendDeck(
     loadProfile(env, room.user_b_id),
   ]);
   const avoidGenres = unionAvoidGenres(profileA, profileB);
-  const { startPage, sortBy } = topupCursor(existingIds.size);
 
+  // Adaptive: expand the room's most-recent likes into TMDb recommendations, so the deck
+  // leans toward what's actually being liked. Likes come from BOTH users → they land in
+  // the shared pool, so matches survive; in a solo room it's simply this one user's likes.
+  const likedIds = await recentLikedIds(env, room.id, LIKED_SEEDS_PER_TOPUP);
+  const recLists = await Promise.all(
+    likedIds.map((id) => getRecommendations(env, room.media_type, id)),
+  );
+  const recCards = recLists.flatMap((recs) =>
+    rejectAvoidGenres(recs, avoidGenres).slice(0, RECS_PER_SEED),
+  );
+
+  // Genre-based discovery as filler + variety (deeper page each round, rotated sort).
+  const { startPage, sortBy } = topupCursor(existingIds.size);
   const fresh = await discoverTitles(env, {
     mediaType: room.media_type,
     genreIds: combineTopGenres(profileA, profileB),
@@ -305,8 +341,9 @@ export async function extendDeck(
     sortBy,
   });
 
+  // Personalized recommendations first, then discovery — deduped into the shared pool.
   const added: DeckCard[] = [];
-  for (const c of fresh) {
+  for (const c of [...recCards, ...fresh]) {
     if (existingIds.size >= MAX_DECK) break;
     if (existingIds.has(c.tmdb_id)) continue;
     existingIds.add(c.tmdb_id);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { genJoinCode, genId } from "../src/lib/ids";
 import { mapProfile, mapRoom } from "../src/lib/mappers";
-import { topupCursor } from "../src/lib/deck";
+import { topupCursor, rejectAvoidGenres } from "../src/lib/deck";
 
 describe("ids", () => {
   it("genJoinCode is 6 chars from the safe alphabet", () => {
@@ -51,5 +51,29 @@ describe("deck top-up cursor", () => {
     const sorts = [0, 20, 40, 60].map((n) => topupCursor(n).sortBy);
     expect(new Set(sorts).size).toBeGreaterThan(1); // not always popularity.desc
     expect(sorts.every((s) => typeof s === "string" && s.includes("."))).toBe(true);
+  });
+});
+
+describe("rejectAvoidGenres (adaptive top-up filter)", () => {
+  const card = (tmdb_id: number, genres: number[]) => ({
+    tmdb_id,
+    media_type: "movie" as const,
+    title: `t${tmdb_id}`,
+    overview: "",
+    poster_path: null,
+    genres,
+    release_year: null,
+    vote_average: null,
+  });
+
+  it("drops cards that contain any avoided genre", () => {
+    const cards = [card(1, [28, 12]), card(2, [27]), card(3, [35, 27]), card(4, [18])];
+    const kept = rejectAvoidGenres(cards, [27]); // 27 = Horror
+    expect(kept.map((c) => c.tmdb_id)).toEqual([1, 4]);
+  });
+
+  it("returns everything when no genres are avoided", () => {
+    const cards = [card(1, [28]), card(2, [27])];
+    expect(rejectAvoidGenres(cards, [])).toHaveLength(2);
   });
 });

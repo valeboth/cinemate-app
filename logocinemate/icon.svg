@@ -1,0 +1,6 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cinemate">
+  <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="512" y2="512">
+    <stop offset="0" stop-color="#FF8A5B"/><stop offset="1" stop-color="#E23755"/></linearGradient></defs>
+  <rect width="512" height="512" fill="url(#g)"/>
+  <path transform="translate(121,124) scale(2.7)" fill-rule="evenodd" fill="#F5F5F7" d="M50 86 C14 58 2 36 20 20 C33 9 47 16 50 29 C53 16 67 9 80 20 C98 36 86 58 50 86 Z M43 34 L43 58 L67 46 Z"/>
+</svg>
