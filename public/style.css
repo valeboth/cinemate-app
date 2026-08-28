@@ -42,10 +42,23 @@ body {
 .topbar h1 {
   margin: 0;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: 0.02em;
-  background: linear-gradient(90deg, #ff2e63, #ff7aa8);
+}
+.logo-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: block;
+  box-shadow: 0 2px 8px rgba(226, 55, 85, 0.35);
+}
+.logo-word {
+  /* Matches the icon's coral→red gradient so the mark and wordmark read as one. */
+  background: linear-gradient(90deg, #ff8a5b, #e23755);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
