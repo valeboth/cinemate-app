@@ -3,7 +3,7 @@ import type { Env } from "../types";
 import { genId } from "../lib/ids";
 import { uniqueJoinCode, userExists } from "../lib/db";
 import { mapRoom } from "../lib/mappers";
-import { getDeckForUser, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
+import { getDeckForUser, extendDeck, getCardFromDeck, resetDeck, buildMatchReason } from "../lib/deck";
 import { getWatchProviders, getImdbId, getTrailerKey, getTitleDetails } from "../services/tmdb";
 import { getOmdbRatings } from "../services/omdb";
 import { createRequest } from "../services/overseerr";
@@ -135,6 +135,31 @@ rooms.get("/:id/deck", async (c) => {
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     return c.json({ error: "deck_generation_failed", detail }, 502);
+  }
+});
+
+// GET /api/rooms/:id/deck/more?user_id=... — top up the shared pool on demand.
+// Extends the SAME pool (both users converge), capped at MAX_DECK for the free tier.
+// Returns { cards: [...only the new titles for this user...] } — [] when at the cap.
+rooms.get("/:id/deck/more", async (c) => {
+  const id = c.req.param("id");
+  const userId = c.req.query("user_id");
+  const row = await c.env.DB.prepare("SELECT * FROM rooms WHERE id = ?")
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) return c.json({ error: "room_not_found" }, 404);
+
+  const room = mapRoom(row);
+  if (userId && userId !== room.user_a_id && userId !== room.user_b_id) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  try {
+    const deck = await extendDeck(c.env, room, userId ?? null);
+    return c.json(deck, 200);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return c.json({ error: "deck_topup_failed", detail }, 502);
   }
 });
 

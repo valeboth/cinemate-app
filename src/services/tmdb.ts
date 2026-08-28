@@ -126,19 +126,25 @@ export interface DiscoverOptions {
   avoidGenres?: number[];
   platform?: string | null;
   pages?: number;
+  /** First TMDb page to fetch (default 1) — lets the deck top-up read deeper pages. */
+  startPage?: number;
+  /** TMDb sort_by (default popularity.desc) — varied across slices for a diverse pool. */
+  sortBy?: string;
 }
 
 /** discover /discover/{movie|tv} for RO; returns deduplicated cards. */
 export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<DeckCard[]> {
   const pages = Math.max(1, Math.min(opts.pages ?? 2, 5));
+  const startPage = Math.max(1, opts.startPage ?? 1);
+  const sortBy = opts.sortBy ?? "popularity.desc";
   const cards: DeckCard[] = [];
   const seen = new Set<number>();
 
-  for (let page = 1; page <= pages; page++) {
+  for (let page = startPage; page < startPage + pages; page++) {
     const params: Record<string, string> = {
       language: TMDB_LANG,
       region: TMDB_REGION,
-      sort_by: "popularity.desc",
+      sort_by: sortBy,
       include_adult: "false",
       "vote_count.gte": "50",
       page: String(page),

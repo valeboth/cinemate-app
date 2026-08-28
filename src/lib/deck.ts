@@ -13,8 +13,25 @@ const MAX_SEEDS_PER_USER = 3;
 
 const TOP_GENRES = 3;
 const MIN_DECK = 5;
+// Hard cap on the shared pool. The deck tops up on demand (extendDeck) but never
+// past this — keeps TMDb calls, KV writes and D1 row size bounded on the free tier.
+const MAX_DECK = 120;
+// Pages pulled per top-up call (20 titles/page). Small → cheap, cache-friendly.
+const TOPUP_PAGES = 2;
+// Rotated across generation slices + top-up rounds so the pool isn't all "popular".
+const SORTS = ["popularity.desc", "vote_average.desc", "primary_release_date.desc"];
 const DECK_CARDS_KV_PREFIX = "deck-cards:";
 const DECK_CARDS_TTL = 60 * 60 * 24 * 7; // 7 days
+
+/**
+ * Where the next top-up should read from. Derived from the current pool size
+ * (~20 titles/TMDb page) so we don't re-fetch pages we already have, and the
+ * sort rotates each round for variety. Pure → unit-tested.
+ */
+export function topupCursor(poolSize: number): { startPage: number; sortBy: string } {
+  const startPage = Math.floor(poolSize / 20) + 1;
+  return { startPage, sortBy: SORTS[startPage % SORTS.length] };
+}
 
 async function loadProfile(env: Env, userId: string | null): Promise<Profile | null> {
   if (!userId) return null;
@@ -113,7 +130,7 @@ async function generatePool(
         genreIds: combineTopGenres(a, b),
         avoidGenres,
         platform: room.platform_filter,
-        pages: 1,
+        pages: 2,
       }),
     );
     // Recommendations aren't genre-filtered by the API → enforce avoid_genres here.
@@ -125,17 +142,19 @@ async function generatePool(
   }
 
   // No applicable seeds → union of genre slices (per-user tastes + common ground).
+  // Each slice uses a different sort so the pool spans popular / acclaimed / recent.
   const slices: number[][] = [topGenresOf(a)];
   if (b) slices.push(topGenresOf(b));
   slices.push(combineTopGenres(a, b));
-  for (const genreIds of slices) {
+  for (let i = 0; i < slices.length; i++) {
     addAll(
       await discoverTitles(env, {
         mediaType: room.media_type,
-        genreIds,
+        genreIds: slices[i],
         avoidGenres,
         platform: room.platform_filter,
         pages: 2,
+        sortBy: SORTS[i % SORTS.length],
       }),
     );
   }
@@ -242,6 +261,80 @@ export async function getDeckForUser(
   cards = cards.filter((c) => !seen.has(c.tmdb_id) && !requested.has(c.tmdb_id));
 
   return { ...deck, cards };
+}
+
+/**
+ * Top up the shared pool on demand: fetch the next TMDb page(s) of the common-ground
+ * slice, dedupe against the existing pool, persist the extended pool (D1 + KV), and
+ * return ONLY the new cards for THIS user (their swipes + Overseerr ids excluded).
+ * Capped at MAX_DECK so the pool — and TMDb/KV/D1 usage — stays bounded on the free tier.
+ * Both users share the same extended pool, so matches remain possible.
+ */
+export async function extendDeck(
+  env: Env,
+  room: Room,
+  userId: string | null,
+): Promise<DeckResult> {
+  const base = await getOrCreateDeck(env, room);
+  const existingIds = new Set(base.cards.map((c) => c.tmdb_id));
+
+  const empty: DeckResult = {
+    room_id: room.id,
+    media_type: room.media_type,
+    generated: false,
+    cards: [],
+  };
+  if (existingIds.size >= MAX_DECK) return empty; // pool already at the cap
+
+  const [profileA, profileB] = await Promise.all([
+    loadProfile(env, room.user_a_id),
+    loadProfile(env, room.user_b_id),
+  ]);
+  const avoidGenres = unionAvoidGenres(profileA, profileB);
+  const { startPage, sortBy } = topupCursor(existingIds.size);
+
+  const fresh = await discoverTitles(env, {
+    mediaType: room.media_type,
+    genreIds: combineTopGenres(profileA, profileB),
+    avoidGenres,
+    platform: room.platform_filter,
+    pages: TOPUP_PAGES,
+    startPage,
+    sortBy,
+  });
+
+  const added: DeckCard[] = [];
+  for (const c of fresh) {
+    if (existingIds.size >= MAX_DECK) break;
+    if (existingIds.has(c.tmdb_id)) continue;
+    existingIds.add(c.tmdb_id);
+    added.push(c);
+  }
+  if (added.length === 0) return empty; // deep pages exhausted or all duplicates
+
+  const allCards = [...base.cards, ...added];
+  const ids = allCards.map((c) => c.tmdb_id);
+  await env.DB.prepare("UPDATE rooms SET deck = ? WHERE id = ?")
+    .bind(JSON.stringify(ids), room.id)
+    .run();
+  await env.TMDB_CACHE.put(DECK_CARDS_KV_PREFIX + room.id, JSON.stringify(allCards), {
+    expirationTtl: DECK_CARDS_TTL,
+  });
+
+  // Serve the new cards to this user, excluding anything they've already swiped/requested.
+  let cards = added;
+  if (userId) {
+    const [{ results }, requested] = await Promise.all([
+      env.DB.prepare("SELECT tmdb_id FROM swipes WHERE room_id = ? AND user_id = ?")
+        .bind(room.id, userId)
+        .all<{ tmdb_id: number }>(),
+      getRequestedTmdbIds(env),
+    ]);
+    const seenByUser = new Set((results ?? []).map((r) => r.tmdb_id));
+    cards = added.filter((c) => !seenByUser.has(c.tmdb_id) && !requested.has(c.tmdb_id));
+  }
+
+  return { room_id: room.id, media_type: room.media_type, generated: false, cards };
 }
 
 /** Find a card in the room's deck cache (for the match screen). */
