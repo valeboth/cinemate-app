@@ -46,6 +46,8 @@ const state = {
   soloMode: false,
   deck: [],
   deckIndex: 0,
+  loadingMore: false, // a deck top-up request is in flight
+  deckExhausted: false, // server has no more titles to add (pool at its cap)
   ws: null,
   pendingCode: null,
   lastSwiped: null, // { card } for undo
@@ -409,11 +411,36 @@ async function loadDeck() {
     state.deck = res.cards || [];
     state.deckIndex = 0;
     state.lastSwiped = null;
+    state.loadingMore = false;
+    state.deckExhausted = false;
     updateUndo();
     $("deck-loading").classList.add("hidden");
     renderCard();
   } catch (e) {
     $("deck-loading").textContent = "Deck error: " + e.message;
+  }
+}
+
+// Top up the shared pool when running low, so the deck feels endless (until the
+// server-side cap). Idempotent-ish: guarded so only one request is in flight.
+const TOPUP_THRESHOLD = 5; // fetch more once ≤ this many cards remain
+async function maybeTopUp() {
+  if (state.loadingMore || state.deckExhausted) return;
+  if (state.deck.length - state.deckIndex > TOPUP_THRESHOLD) return;
+  state.loadingMore = true;
+  try {
+    const res = await api(
+      `/api/rooms/${state.room.id}/deck/more?user_id=${encodeURIComponent(state.userId)}`,
+    );
+    const more = res.cards || [];
+    if (more.length) state.deck = state.deck.concat(more);
+    else state.deckExhausted = true; // pool at its cap — nothing more to add
+  } catch (e) {
+    console.error("deck top-up error", e);
+  } finally {
+    state.loadingMore = false;
+    // Refresh only if we're on the loading/empty view; don't disturb a shown card.
+    if ($("card").classList.contains("hidden")) renderCard();
   }
 }
 
@@ -467,10 +494,20 @@ function renderCard() {
   resetCardTransform();
   if (!card) {
     el.classList.add("hidden");
-    $("deck-empty").classList.remove("hidden");
+    if (state.deckExhausted) {
+      $("deck-loading").classList.add("hidden");
+      $("deck-empty").classList.remove("hidden");
+    } else {
+      // More may be on the way — show a loader and make sure a top-up is running.
+      $("deck-empty").classList.add("hidden");
+      $("deck-loading").textContent = "Finding more titles…";
+      $("deck-loading").classList.remove("hidden");
+      maybeTopUp();
+    }
     return;
   }
   $("deck-empty").classList.add("hidden");
+  $("deck-loading").classList.add("hidden");
   el.classList.remove("hidden");
   $("card-poster").style.backgroundImage = card.poster_path ? `url(${TMDB_IMG}${card.poster_path})` : "none";
   $("card-title").textContent = card.title;
@@ -503,6 +540,7 @@ async function swipe(direction) {
   state.deckIndex++;
   updateUndo();
   renderCard();
+  maybeTopUp(); // proactively fetch more as we near the end (seamless refill)
   try {
     const res = await api(`/api/rooms/${state.room.id}/swipe`, {
       method: "POST",

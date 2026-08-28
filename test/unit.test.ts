@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { genJoinCode, genId } from "../src/lib/ids";
 import { mapProfile, mapRoom } from "../src/lib/mappers";
+import { topupCursor } from "../src/lib/deck";
 
 describe("ids", () => {
   it("genJoinCode is 6 chars from the safe alphabet", () => {
@@ -36,5 +37,19 @@ describe("mappers", () => {
     const bad = mapProfile({ user_id: "u2", genre_scores: "not json", prefs: "{" });
     expect(bad.genre_scores).toEqual({});
     expect(bad.prefs).toEqual({});
+  });
+});
+
+describe("deck top-up cursor", () => {
+  it("advances the start page with the pool size (~20/TMDb page)", () => {
+    expect(topupCursor(0).startPage).toBe(1);
+    expect(topupCursor(19).startPage).toBe(1);
+    expect(topupCursor(20).startPage).toBe(2);
+    expect(topupCursor(45).startPage).toBe(3);
+  });
+  it("rotates sort_by across rounds for a varied pool", () => {
+    const sorts = [0, 20, 40, 60].map((n) => topupCursor(n).sortBy);
+    expect(new Set(sorts).size).toBeGreaterThan(1); // not always popularity.desc
+    expect(sorts.every((s) => typeof s === "string" && s.includes("."))).toBe(true);
   });
 });
