@@ -65,15 +65,15 @@
                 <button class="toggle-opt" data-media="tv">📺 TV shows</button>
               </div>
             </div>
-            <label class="muted">Platform (optional)</label>
-            <select id="platform-select" class="input">
-              <option value="">Any / Plex</option>
-              <option value="netflix">Netflix</option>
-              <option value="disney">Disney+</option>
-              <option value="hbo">HBO Max</option>
-              <option value="prime">Prime Video</option>
-              <option value="apple">Apple TV+</option>
-            </select>
+            <label class="muted">Platforms <span class="hint">(pick any you have)</span></label>
+            <div id="platform-chips" class="chips">
+              <button type="button" class="chip on" data-platform="">Any</button>
+              <button type="button" class="chip" data-platform="netflix">Netflix</button>
+              <button type="button" class="chip" data-platform="disney">Disney+</button>
+              <button type="button" class="chip" data-platform="hbo">HBO Max</button>
+              <button type="button" class="chip" data-platform="prime">Prime Video</button>
+              <button type="button" class="chip" data-platform="apple">Apple TV+</button>
+            </div>
             <label class="check-row"><input type="checkbox" id="solo-check" /> Solo mode (just me)</label>
             <button id="create-room-btn" class="btn btn-primary mt">Create</button>
           </div>

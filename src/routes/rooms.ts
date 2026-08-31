@@ -310,6 +310,8 @@ rooms.get("/:id/ws", async (c) => {
 });
 
 // PATCH /api/rooms/:id — live movie/tv toggle: change media_type + reset the pool.
+// Creator-only: media_type is a shared, room-level setting (both users draw from ONE
+// pool), so only the room creator (user_a) decides it; the joiner inherits it.
 // Body: { user_id, media_type }
 rooms.patch("/:id", async (c) => {
   const id = c.req.param("id");
@@ -327,8 +329,8 @@ rooms.patch("/:id", async (c) => {
   if (!row) return c.json({ error: "room_not_found" }, 404);
   const room = mapRoom(row);
 
-  // AUTH GATING: only room members can change the type.
-  if (userId !== room.user_a_id && userId !== room.user_b_id) {
+  // AUTH GATING: only the room creator (user_a) may change the shared media_type.
+  if (userId !== room.user_a_id) {
     return c.json({ error: "forbidden" }, 403);
   }
 
