@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { genJoinCode, genId } from "../src/lib/ids";
 import { mapProfile, mapRoom } from "../src/lib/mappers";
 import { topupCursor, rejectAvoidGenres } from "../src/lib/deck";
+import { platformProviderParam } from "../src/services/tmdb";
 
 describe("ids", () => {
   it("genJoinCode is 6 chars from the safe alphabet", () => {
@@ -75,5 +76,23 @@ describe("rejectAvoidGenres (adaptive top-up filter)", () => {
   it("returns everything when no genres are avoided", () => {
     const cards = [card(1, [28]), card(2, [27])];
     expect(rejectAvoidGenres(cards, [])).toHaveLength(2);
+  });
+});
+
+describe("platformProviderParam (multi-select platforms → TMDb providers)", () => {
+  it("maps a single platform to its provider id", () => {
+    expect(platformProviderParam("netflix")).toBe("8");
+  });
+  it("maps a CSV of platforms to OR-joined ids (netflix + prime)", () => {
+    expect(platformProviderParam("netflix,prime")).toBe("8|119");
+  });
+  it("treats empty / null as 'any' (no filter)", () => {
+    expect(platformProviderParam("")).toBeNull();
+    expect(platformProviderParam(null)).toBeNull();
+    expect(platformProviderParam(undefined)).toBeNull();
+  });
+  it("ignores unknown keys and dedupes, trimming/casing", () => {
+    expect(platformProviderParam(" Netflix , bogus ")).toBe("8");
+    expect(platformProviderParam("prime,amazon")).toBe("119"); // both → 119, deduped
   });
 });

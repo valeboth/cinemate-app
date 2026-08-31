@@ -42,6 +42,7 @@ const state = {
   seeds: [], // [{ tmdb_id, media_type, title }]
   editMode: false, // editing an existing profile (vs. first-time onboarding)
   mediaType: "movie",
+  platforms: new Set(), // selected streaming platforms (empty = any); creator-only
   room: null,
   soloMode: false,
   deck: [],
@@ -321,6 +322,26 @@ function setupMediaToggle() {
   });
 }
 
+// Multi-select streaming platforms; empty set = "Any". Results include titles on ANY
+// picked platform. The "Any" chip (data-platform="") clears the selection.
+function syncPlatformChips() {
+  document.querySelectorAll("#platform-chips .chip").forEach((b) => {
+    const p = b.dataset.platform;
+    b.classList.toggle("on", p === "" ? state.platforms.size === 0 : state.platforms.has(p));
+  });
+}
+function setupPlatformChips() {
+  document.querySelectorAll("#platform-chips .chip").forEach((btn) => {
+    btn.onclick = () => {
+      const p = btn.dataset.platform;
+      if (p === "") state.platforms.clear(); // "Any" resets to no filter
+      else if (state.platforms.has(p)) state.platforms.delete(p);
+      else state.platforms.add(p);
+      syncPlatformChips();
+    };
+  });
+}
+
 async function handleCreateRoom() {
   const err = $("lobby-error");
   err.textContent = "";
@@ -330,7 +351,7 @@ async function handleCreateRoom() {
       body: JSON.stringify({
         user_id: state.userId,
         media_type: state.mediaType,
-        platform_filter: $("platform-select").value || null,
+        platform_filter: [...state.platforms].join(",") || null, // CSV; empty = any
         solo: $("solo-check").checked,
       }),
     });
@@ -444,10 +465,17 @@ async function maybeTopUp() {
   }
 }
 
+// The creator (user_a) owns the shared movie/tv choice; solo user is their own creator.
+function isRoomCreator() {
+  return !!state.room && state.userId === state.room.user_a_id;
+}
+
 function syncMediaToggle() {
   document.querySelectorAll("#swipe-media-toggle .toggle-opt").forEach((b) => {
     b.classList.toggle("active", b.dataset.media === state.mediaType);
   });
+  // Only the creator can switch type (shared pool); hide the control for the joiner.
+  $("swipe-media-toggle").classList.toggle("hidden", !isRoomCreator());
 }
 
 async function toggleMedia(media) {
@@ -1022,6 +1050,7 @@ function init() {
   renderAvoidChips();
   setupSeedSearch();
   setupMediaToggle();
+  setupPlatformChips();
   setupGestures();
 
   $("onboarding-continue").onclick = handleOnboarding;

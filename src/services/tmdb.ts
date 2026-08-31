@@ -101,6 +101,20 @@ const PROVIDER_IDS: Record<string, number> = {
   "apple tv": 350,
 };
 
+/**
+ * Map a platform filter (single key or CSV like "netflix,prime") to TMDb provider ids,
+ * joined with "|" (OR) for with_watch_providers. Unknown/empty → null. Pure → unit-tested.
+ */
+export function platformProviderParam(platform?: string | null): string | null {
+  if (!platform) return null;
+  const ids = new Set<number>();
+  for (const raw of platform.split(",")) {
+    const id = PROVIDER_IDS[raw.trim().toLowerCase()];
+    if (id) ids.add(id);
+  }
+  return ids.size > 0 ? [...ids].join("|") : null;
+}
+
 function dateToYear(date?: string): number | null {
   if (!date || date.length < 4) return null;
   const y = Number(date.slice(0, 4));
@@ -156,9 +170,9 @@ export async function discoverTitles(env: Env, opts: DiscoverOptions): Promise<D
       params.without_genres = opts.avoidGenres.join(","); // exclude any of these
     }
 
-    const providerId = opts.platform ? PROVIDER_IDS[opts.platform.toLowerCase()] : undefined;
-    if (providerId) {
-      params.with_watch_providers = String(providerId);
+    const providers = platformProviderParam(opts.platform); // "8|119" for netflix+prime
+    if (providers) {
+      params.with_watch_providers = providers;
       params.watch_region = TMDB_REGION;
     }
 
